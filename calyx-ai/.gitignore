@@ -1,0 +1,27 @@
+# Node
+node_modules/
+dist/
+dist-electron/
+.env
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+venv/
+.env/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Modelos grandes y datos
+*.bin
+*.gguf
+*.safetensors
