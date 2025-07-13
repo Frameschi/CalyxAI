@@ -1,5 +1,6 @@
 @echo off
-cd /d "%~dp0\..\frontend"
+REM Ir a la carpeta frontend (un nivel arriba de scripts)
+cd /d "%~dp0.."
 start "Vite" cmd /c "npm run dev"
 REM Esperar a que Vite esté listo y sirva HTML válido
 :waitvite
