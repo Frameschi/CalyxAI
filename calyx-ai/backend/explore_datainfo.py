@@ -1,25 +1,19 @@
 import sqlite3
 
-DB_PATH = "datainfo.db"
+import os
+DB_PATH = os.path.join(os.path.dirname(__file__), "datainfo.db")
 
 conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
 
-# Mostrar todas las tablas
-print("Tablas en la base de datos:")
-cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-tables = [row[0] for row in cursor.fetchall()]
-for table in tables:
-    print(f"\nTabla: {table}")
-    # Mostrar columnas
-    cursor.execute(f"PRAGMA table_info({table});")
-    columns = [col[1] for col in cursor.fetchall()]
-    print("Columnas:", columns)
-    # Mostrar todas las filas
-    cursor.execute(f"SELECT * FROM {table};")
+# Imprimir solo los nombres de los alimentos
+try:
+    cursor.execute("SELECT alimento FROM alimentos;")
     rows = cursor.fetchall()
-    print(f"Total de filas: {len(rows)}")
+    print("Alimentos en la base de datos:")
     for row in rows:
-        print(row)
-
-conn.close()
+        print(row[0])
+except Exception as e:
+    print(f"Error: {e}")
+finally:
+    conn.close()

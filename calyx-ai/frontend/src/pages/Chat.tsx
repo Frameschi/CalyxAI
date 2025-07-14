@@ -7,6 +7,7 @@ export default function Chat() {
     { from: "ai", text: "¡Hola! ¿En qué puedo ayudarte hoy?" },
   ]);
   const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
 
   // Palabras clave para detectar preguntas sobre alimentos
   const patronesAlimento = [
@@ -18,60 +19,75 @@ export default function Chat() {
   ];
 
   const handleSend = async () => {
-    if (input.trim() === "") return;
+    if (input.trim() === "" || loading) return;
     const userMsg = input;
     setMessages([...messages, { from: "user", text: userMsg }]);
     setInput("");
-
-    // Detectar si la pregunta es sobre un alimento
-
-    let alimentoDetectado = null;
-    let esCompleta = false;
-    for (const patron of patronesAlimento) {
-      const match = userMsg.match(patron);
-      if (match && match[1]) {
-        alimentoDetectado = match[1].trim();
-        if (/completa/i.test(userMsg)) esCompleta = true;
-        break;
+    setLoading(true);
+    try {
+      // Detectar si la pregunta es sobre un alimento
+      let alimentoDetectado = null;
+      let esCompleta = false;
+      for (const patron of patronesAlimento) {
+        const match = userMsg.match(patron);
+        if (match && match[1]) {
+          alimentoDetectado = match[1].trim();
+          if (/completa/i.test(userMsg)) esCompleta = true;
+          break;
+        }
       }
-    }
 
-    if (alimentoDetectado) {
-      // Consultar endpoint especializado
+      if (alimentoDetectado) {
+        // Consultar endpoint especializado
+        try {
+          const nombreParam = esCompleta ? `informacion completa de ${alimentoDetectado}` : alimentoDetectado;
+          const res = await fetch(`${API_URL}/alimento?nombre=${encodeURIComponent(nombreParam)}`);
+          const data = await res.json();
+          if (data.error) {
+            setMessages(msgs => [...msgs, { from: "ai", text: `No se encontró información para "${alimentoDetectado}".` }]);
+          } else {
+            let respuesta = `Información de ${alimentoDetectado} (más común):\n`;
+            for (const [k, v] of Object.entries(data.alimento_principal)) {
+              respuesta += `• ${k}: ${v}\n`;
+            }
+            if (data.sugerencias && data.sugerencias.length > 0) {
+              respuesta += `\nOtras variantes: ${data.sugerencias.join(", ")}`;
+            }
+            setMessages(msgs => [...msgs, { from: "ai", text: respuesta }]);
+          }
+        } catch (err) {
+          setMessages(msgs => [...msgs, { from: "ai", text: "Error de conexión con el backend de alimentos." }]);
+        }
+        return;
+      }
+
+      // Si no es pregunta de alimento, usar IA general
       try {
-        // Si es información completa, pasar el texto completo
-        const nombreParam = esCompleta ? `informacion completa de ${alimentoDetectado}` : alimentoDetectado;
-        const res = await fetch(`${API_URL}/alimento?nombre=${encodeURIComponent(nombreParam)}`);
-        const data = await res.json();
-        if (data.error) {
-          setMessages(msgs => [...msgs, { from: "ai", text: `No se encontró información para "${alimentoDetectado}".` }]);
-        } else {
-          let respuesta = `Información de ${alimentoDetectado} (más común):\n`;
-          for (const [k, v] of Object.entries(data.alimento_principal)) {
-            respuesta += `• ${k}: ${v}\n`;
+        const controller = window.AbortController ? new window.AbortController() : new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 15000); // 15 segundos
+        try {
+          const res = await fetch(`${API_URL}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: userMsg }),
+            signal: controller.signal
+          });
+          window.clearTimeout(timeoutId);
+          const data = await res.json();
+          setMessages(msgs => [...msgs, { from: "ai", text: data.response || "(Sin respuesta)" }]);
+        } catch (err: any) {
+          window.clearTimeout(timeoutId);
+          if (err && err.name === 'AbortError') {
+            setMessages(msgs => [...msgs, { from: "ai", text: "El servidor está tardando demasiado en responder. Intenta de nuevo más tarde." }]);
+          } else {
+            setMessages(msgs => [...msgs, { from: "ai", text: "Error de conexión con el backend." }]);
           }
-          if (data.sugerencias && data.sugerencias.length > 0) {
-            respuesta += `\nOtras variantes: ${data.sugerencias.join(", ")}`;
-          }
-          setMessages(msgs => [...msgs, { from: "ai", text: respuesta }]);
         }
       } catch (err) {
-        setMessages(msgs => [...msgs, { from: "ai", text: "Error de conexión con el backend de alimentos." }]);
+        setMessages(msgs => [...msgs, { from: "ai", text: "Error inesperado en el frontend." }]);
       }
-      return;
-    }
-
-    // Si no es pregunta de alimento, usar IA general
-    try {
-      const res = await fetch(`${API_URL}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: userMsg })
-      });
-      const data = await res.json();
-      setMessages(msgs => [...msgs, { from: "ai", text: data.response || "(Sin respuesta)" }]);
-    } catch (err) {
-      setMessages(msgs => [...msgs, { from: "ai", text: "Error de conexión con el backend." }]);
+    } finally {
+      setLoading(false);
     }
   };
 
