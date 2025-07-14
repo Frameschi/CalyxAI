@@ -25,4 +25,7 @@ Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, p
 - Pruebas exitosas de comunicación y generación de respuestas
 
 ---
-Desarrollado por Frameschi. Versión 1.2.1
+Desarrollado por Frameschi. Versión 1.2.2
+
+## Notas de versión
+Consulta los cambios recientes en [CHANGELOG.md](./CHANGELOG.md)

@@ -64,8 +64,9 @@ export default function Chat() {
       // Si no es pregunta de alimento, usar IA general
       try {
         const controller = window.AbortController ? new window.AbortController() : new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 15000); // 15 segundos
+        const timeoutId = window.setTimeout(() => controller.abort(), 60000); // 60 segundos para pruebas
         try {
+          console.log('Enviando petición a /chat...');
           const res = await fetch(`${API_URL}/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -73,10 +74,13 @@ export default function Chat() {
             signal: controller.signal
           });
           window.clearTimeout(timeoutId);
+          console.log('Respuesta recibida de /chat:', res);
           const data = await res.json();
+          console.log('JSON parseado:', data);
           setMessages(msgs => [...msgs, { from: "ai", text: data.response || "(Sin respuesta)" }]);
         } catch (err: any) {
           window.clearTimeout(timeoutId);
+          console.error('Error en fetch /chat:', err);
           if (err && err.name === 'AbortError') {
             setMessages(msgs => [...msgs, { from: "ai", text: "El servidor está tardando demasiado en responder. Intenta de nuevo más tarde." }]);
           } else {

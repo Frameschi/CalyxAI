@@ -53,7 +53,12 @@ class IAEngine:
             return {"status": "ok", "message": "Modelo cargado y listo"}
         return {"status": "loading", "message": "Modelo aún no está listo"}
 
-    def generate(self, prompt, max_new_tokens=256, temperature=0.7):
+    def generate(self, prompt, max_new_tokens=80, temperature=0.5):
+        """
+        Generación profesional: respuestas más breves, naturales y menos propensas a alucinaciones.
+        - max_new_tokens=80: Limita la longitud de la respuesta.
+        - temperature=0.5: Menos creatividad, más precisión.
+        """
         if not self.is_ready():
             raise RuntimeError("El modelo no está listo o falló la carga.")
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
@@ -62,7 +67,15 @@ class IAEngine:
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=True,
-                temperature=temperature
+                temperature=temperature,
+                top_p=0.95,
+                top_k=40,
+                repetition_penalty=1.1
             )
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # Limpiar respuesta: eliminar eco del prompt si lo hay
+        if response.lower().startswith(prompt.lower()):
+            response = response[len(prompt):].lstrip("\n :.-")
+        # Limitar a 3 líneas para mayor naturalidad
+        response = "\n".join(response.splitlines()[:3]).strip()
         return response
