@@ -107,7 +107,12 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
     def comparar_flexible(a, b):
         a = limpiar_nombre(a)
         b = limpiar_nombre(b)
-        return a == b
+        # Coincidencia exacta o substring flexible para variantes sugeridas
+        if a == b:
+            return True
+        if a in b or b in a:
+            return True
+        return False
 
     def get_mas_comun_flexible(rows, nombre_busqueda=None):
         if nombre_busqueda:
@@ -118,7 +123,6 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
 
     mas_comun = get_mas_comun_flexible(rows, nombre_busqueda)
     variantes = [row[1] for row in rows if row != mas_comun][:4]  # Limitar a máximo 4 sugerencias
-
 
     alimento_dict = dict(zip(columns, mas_comun))
     # Detectar cantidad base del alimento en la base
@@ -146,15 +150,44 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
         except:
             return valor
 
+    # --- Selección de campos por categoría ---
+    categoria = alimento_dict.get("grupo de alimentos", "").strip().lower()
+    campos_por_categoria = {
+        "verduras":        ["cantidad", "energia (kcal)", "fibra (g)"],
+        "frutas":          ["cantidad", "energia (kcal)", "fibra (g)"],
+        "cereales con grasa": ["cantidad", "energia (kcal)", "hidratos de carbono (g)"],
+        "cereales sin grasa": ["cantidad", "energia (kcal)", "hidratos de carbono (g)"],
+        "leguminosas":     ["cantidad", "energia (kcal)", "proteina (g)"],
+        "aoa alto aporte de grasa": ["cantidad", "energia (kcal)", "proteina (g)"],
+        "aoa moderado aporte de grasa": ["cantidad", "energia (kcal)", "proteina (g)"],
+        "aoa bajo aporte de grasa": ["cantidad", "energia (kcal)", "proteina (g)"],
+        "aoa muy bajo aporte de grasa": ["cantidad", "energia (kcal)", "proteina (g)"],
+        "leche entera":    ["cantidad", "energia (kcal)", "proteina (g)"],
+        "leche semidescremada": ["cantidad", "energia (kcal)", "proteina (g)"],
+        "leche descremada": ["cantidad", "energia (kcal)", "proteina (g)"],
+        "leche con azúcar": ["cantidad", "energia (kcal)", "proteina (g)"],
+        "grasas con proteína": ["cantidad", "energia (kcal)", "lipidos (g)", "proteina (g)"],
+        "grasas sin proteína": ["cantidad", "energia (kcal)", "lipidos (g)"],
+        "azúcares con grasa": ["cantidad", "energia (kcal)", "hidratos de carbono (g)"],
+        "azúcares sin grasa": ["cantidad", "energia (kcal)", "hidratos de carbono (g)"],
+        "bebidas alcohólicas": ["cantidad", "energia (kcal)", "etanol (g)"],
+        "libres":          ["cantidad", "energia (kcal)", "sodio (mg)"]
+    }
+    # Si es completa, mostrar todos los campos menos id
     if es_completa:
         alimento_filtrado = {k.title(): escalar(v) if k.lower() not in ["alimento","grupo de alimentos","unidad"] else v for k, v in alimento_dict.items() if k.lower() != "id"}
     else:
-        campos_mostrar = {
-            "cantidad": "Cantidad",
-            "energia (kcal)": "Energía (kcal)",
-            "fibra (g)": "Fibra (g)"
-        }
-        alimento_filtrado = {nuevo: escalar(alimento_dict[original]) for original, nuevo in campos_mostrar.items() if original in alimento_dict}
+        campos = campos_por_categoria.get(categoria, ["cantidad", "energia (kcal)"])
+        alimento_filtrado = {}
+        for campo in campos:
+            if campo in alimento_dict:
+                # Mostrar con nombre bonito
+                nombre_bonito = campo.replace("(g)", "").replace("(kcal)", "").replace("(mg)", "").replace("de ", "de").title().replace("De ", "de ").replace("Hidratos De Carbono", "Hidratos de Carbono")
+                alimento_filtrado[nombre_bonito] = escalar(alimento_dict[campo])
+        # Agregar unidad explícita si existe
+        unidad = alimento_dict.get("unidad", "g")
+        if "Cantidad" in alimento_filtrado:
+            alimento_filtrado = {"Cantidad": alimento_filtrado["Cantidad"], "Unidad": unidad, **{k: v for k, v in alimento_filtrado.items() if k != "Cantidad"}}
 
     # Agregar info de cantidad solicitada si aplica
     if cantidad_detectada:
@@ -220,7 +253,13 @@ async def chat(request: Request):
     columns, rows = get_alimentos_by_name(alimento_mencionado)
     # 1. Buscar coincidencia exacta (ignorando acentos y mayúsculas)
     def comparar_flexible(a, b):
-        return normalizar_texto(a) == normalizar_texto(b)
+        a_norm = normalizar_texto(a)
+        b_norm = normalizar_texto(b)
+        if a_norm == b_norm:
+            return True
+        if a_norm in b_norm or b_norm in a_norm:
+            return True
+        return False
     exactos = []
     if rows:
         for row in rows:
@@ -350,10 +389,12 @@ async def chat(request: Request):
     system_instruction = (
         "<|system|>\n"
         "Eres Calyx AI, un asistente inteligente especializado en nutrición, pero también puedes responder preguntas generales siempre que sean apropiadas. "
+        "Responde exclusivamente sobre el alimento proporcionado. No mezcles ni inventes otros. "
         "Evita responder con historias personales, experiencias laborales, universidades, anécdotas o cosas inventadas. "
         "Responde siempre en español, de forma breve, clara y profesional. "
         "Si no sabes algo con certeza, admite tu límite con honestidad. "
-        "Nunca repitas literalmente el mensaje del usuario, ni imites sus palabras o frases.\n"
+        "Nunca repitas literalmente el mensaje del usuario, ni imites sus palabras o frases. "
+        "Si la pregunta es sobre nutrición, responde solo con los datos nutricionales, sin frases introductorias, descripciones generales ni relleno irrelevante.\n"
         f"{contexto_nutricional}"
     )
     # Prompt reforzado para respuestas cerradas y profesionales
@@ -401,12 +442,16 @@ async def chat(request: Request):
             if (not re.match(r"^(hola|buenas|buenos|qué tal|cómo va|gracias|estoy bien|saludo)", l.strip(), re.IGNORECASE)
                 and not es_imitacion(l)
                 and l.strip().lower() not in ["hola", "hola, buenas tardes", "hola, buenas tardes!", "hola, buenas tardes!!"]):
+                # Si es pregunta nutricional, filtrar frases de relleno
+                if es_nutricion and re.search(r"(es una|es un|es la|es el|sirve|utilizada|utilizado|perfecta|perfecto|acompañamiento|versátil|fresca|fresco|base sana|preparaciones|ensalada|plato principal|platos más elaborados|picada|picado|junto|otros vegetales|cruda|crudo|hamburguesas|preparaciones saladas|ingredientes para ensalada|ingrediente para ensalada|ingredientes para ensaladas|ingrediente para ensaladas)", l.strip(), re.IGNORECASE):
+                    continue
                 clean_response = l.strip()
                 break
         else:
             clean_response = next((l.strip() for l in lines if l.strip()), response.strip())
-        # --- Detectar respuesta inconclusa y ofrecer continuar ---
-        if clean_response.endswith(" para") or clean_response.endswith(" para.") or clean_response.endswith(" para...") or clean_response.endswith(" para…") or clean_response.endswith(" para,") or clean_response.endswith(" para:"):
+        # --- Detectar respuesta inconclusa y ofrecer continuar (palabra cortada o frase incompleta) ---
+        if re.search(r"[a-záéíóúñ]{3,}$", clean_response) and not re.search(r"[\.\!\?]$", clean_response):
+            # Si termina en palabra incompleta o sin puntuación final
             clean_response += " ¿Quieres que continúe la respuesta?"
         # Postprocesar para evitar saludos reflejo
         clean_response = postprocesar_respuesta(prompt, clean_response)
