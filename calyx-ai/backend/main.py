@@ -170,6 +170,23 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
 
 @app.post("/chat")
 async def chat(request: Request):
+    # --- Postprocesador para saludos reflejo ---
+    def es_solo_salida_reflejo(user_input: str, respuesta: str) -> bool:
+        return respuesta.strip().lower() == user_input.strip().lower()
+
+    def respuesta_es_solo_saludo(user_input: str) -> bool:
+        texto = user_input.lower()
+        return any(f in texto for f in ["hola", "buenas", "¿cómo estás", "como estas", "qué tal", "saludos"])
+
+    def respuesta_para_saludo(user_input: str) -> str:
+        if "¿cómo estás" in user_input.lower() or "como estas" in user_input.lower():
+            return "¡Hola! Estoy bien, gracias por preguntar. ¿Cómo puedo ayudarte hoy?"
+        return "¡Hola! ¿En qué puedo ayudarte hoy?"
+
+    def postprocesar_respuesta(user_input: str, respuesta: str) -> str:
+        if es_solo_salida_reflejo(user_input, respuesta) and respuesta_es_solo_saludo(user_input):
+            return respuesta_para_saludo(user_input)
+        return respuesta
     print("[LOG] /chat endpoint called")
     data = await request.json()
     print(f"[LOG] /chat received data: {data}")
@@ -192,62 +209,207 @@ async def chat(request: Request):
         texto = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
         return texto
 
+    # Búsqueda flexible: ignorar orden de palabras y acentos
+    def normalizar_texto(texto):
+        import unicodedata
+        texto = texto.lower()
+        texto = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
+        palabras = sorted(texto.split())
+        return ' '.join(palabras)
     alimento_mencionado = limpiar_nombre(prompt)
     columns, rows = get_alimentos_by_name(alimento_mencionado)
-    contexto_extra = ""
-    # Detectar si el prompt trata sobre nutrición, alimentos o cálculos
+    # 1. Buscar coincidencia exacta (ignorando acentos y mayúsculas)
+    def comparar_flexible(a, b):
+        return normalizar_texto(a) == normalizar_texto(b)
+    exactos = []
+    if rows:
+        for row in rows:
+            nombre_row = row[columns.index('alimento')] if 'alimento' in columns else row[1]
+            if comparar_flexible(nombre_row, alimento_mencionado):
+                exactos.append(row)
+    # Si hay coincidencia exacta, usar solo esa
+    if exactos:
+        rows = exactos
+    elif rows:
+        palabras_clave = set(normalizar_texto(alimento_mencionado).split())
+        # Si el alimento solicitado tiene más de una palabra, solo aceptar coincidencias que contengan todas las palabras clave
+        if len(palabras_clave) > 1:
+            mejores = []
+            for row in rows:
+                nombre_row = row[columns.index('alimento')] if 'alimento' in columns else row[1]
+                palabras_row = set(normalizar_texto(nombre_row).split())
+                if palabras_clave.issubset(palabras_row):
+                    mejores.append(row)
+            if mejores:
+                rows = mejores
+            else:
+                # Si no hay ninguna coincidencia relevante, buscar por similitud semántica
+                try:
+                    from sentence_transformers import SentenceTransformer, util
+                    model = getattr(app.state, "st_model", None)
+                    if model is None:
+                        model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+                        app.state.st_model = model
+                    nombres_alimentos = [row[columns.index('alimento')] if 'alimento' in columns else row[1] for row in rows]
+                    emb_consulta = model.encode([alimento_mencionado], convert_to_tensor=True)
+                    emb_alimentos = model.encode(nombres_alimentos, convert_to_tensor=True)
+                    scores = util.cos_sim(emb_consulta, emb_alimentos)[0].cpu().numpy()
+                    idx_max = scores.argmax()
+                    if scores[idx_max] > 0.7:
+                        rows = [rows[idx_max]]
+                    else:
+                        return JSONResponse({"error": f"No se encontró información relevante para '{prompt}'"}, status_code=404)
+                except Exception as e:
+                    return JSONResponse({"error": f"Error en búsqueda semántica: {str(e)}"}, status_code=500)
+        else:
+            # Si solo es una palabra, usar la mejor por score
+            norm_input = normalizar_texto(alimento_mencionado)
+            mejor_row = None
+            mejor_score = 0
+            for row in rows:
+                nombre_row = row[columns.index('alimento')] if 'alimento' in columns else row[1]
+                score = len(set(norm_input.split()) & set(normalizar_texto(nombre_row).split()))
+                if score > mejor_score:
+                    mejor_score = score
+                    mejor_row = row
+            if mejor_row:
+                rows = [mejor_row]
+
+    contexto_nutricional = ""
     temas_nutricion = ["alimento", "caloría", "proteína", "fibra", "vitamina", "mineral", "nutrición", "formula", "cálculo", "energía", "macronutriente", "micronutriente"]
     es_nutricion = any(t in prompt.lower() for t in temas_nutricion)
 
+    # Interpolación de datos reales y cálculo proporcional si aplica
     if rows and es_nutricion:
-        # Si se encuentra el alimento y el tema es nutricional, preparar contexto nutricional
         mas_comun = rows[0]
         alimento_dict = dict(zip(columns, mas_comun))
-        contexto_extra = f"\nDatos nutricionales de '{alimento_dict.get('alimento', alimento_mencionado)}':\n"
-        for k, v in alimento_dict.items():
-            if k.lower() != "id":
-                contexto_extra += f"- {k.title()}: {v}\n"
+        nombre_alimento = alimento_dict.get('alimento', alimento_mencionado)
+        contexto_nutricional = f"\nInformación nutricional de {nombre_alimento}:\n"
+        if "alimento" in alimento_dict:
+            contexto_nutricional += f"• Alimento: {nombre_alimento}\n"
+        campos_valores = {}
+        for campo, etiqueta in [
+            ("cantidad", "Cantidad"),
+            ("peso bruto (g)", "Cantidad"),
+            ("peso neto (g)", "Cantidad"),
+            ("energia (kcal)", "Energía"),
+            ("calorias", "Energía"),
+            ("proteina (g)", "Proteína"),
+            ("fibra (g)", "Fibra"),
+        ]:
+            if campo in alimento_dict:
+                contexto_nutricional += f"• {etiqueta}: {alimento_dict[campo]}\n"
+                campos_valores[etiqueta] = alimento_dict[campo]
         if "completa" in prompt.lower():
-            contexto_extra += "\nPor favor, proporciona toda la información nutricional relevante.\n"
-        else:
-            contexto_extra += "\nPor favor, responde solo con los datos más relevantes para el usuario.\n"
+            for k, v in alimento_dict.items():
+                if k.lower() != "id" and k.lower() not in ["alimento", "cantidad", "peso bruto (g)", "peso neto (g)", "energia (kcal)", "calorias", "proteina (g)", "fibra (g)"]:
+                    contexto_nutricional += f"• {k.title()}: {v}\n"
+        import re
+        match_cant = re.search(r"(\d+(?:[\.,]\d+)?)(\s*)(g|gramos|kg|kilos|ml|l|litros|mg)?\s+de\s+(.+)", prompt.lower())
+        if match_cant:
+            cantidad_usuario = float(match_cant.group(1).replace(",","."))
+            unidad_usuario = match_cant.group(3) or "g"
+            cantidad_base = None
+            for k in alimento_dict:
+                if k.lower() in ["cantidad", "peso bruto (g)", "peso neto (g)"]:
+                    try:
+                        cantidad_base = float(str(alimento_dict[k]).replace(",",".").split()[0])
+                        break
+                    except:
+                        pass
+            if not cantidad_base:
+                cantidad_base = 100.0
+            factor = cantidad_usuario / cantidad_base
+            energia = None
+            proteina = None
+            for k in alimento_dict:
+                if k.lower() in ["energia (kcal)", "calorias"]:
+                    try:
+                        energia = round(float(str(alimento_dict[k]).replace(",",".").split()[0]) * factor, 2)
+                    except:
+                        pass
+                if k.lower() == "proteina (g)":
+                    try:
+                        proteina = round(float(str(alimento_dict[k]).replace(",",".").split()[0]) * factor, 2)
+                    except:
+                        pass
+            contexto_nutricional += f"\nCálculo proporcional para {cantidad_usuario} {unidad_usuario} de {nombre_alimento}:\n"
+            if energia is not None:
+                contexto_nutricional += f"➡ Energía: {energia} kcal\n"
+            if proteina is not None:
+                contexto_nutricional += f"➡ Proteína: {proteina} g\n"
+        contexto_nutricional += "\nResponde solo usando estos datos. Si falta información, indícalo con honestidad.\n"
     elif es_nutricion:
-        # Si el tema es nutricional pero no hay alimento en la base, dar instrucción para usar solo datos confiables
-        contexto_extra = "\nResponde solo con información nutricional basada en la base de datos proporcionada. Si no tienes datos, indica que no puedes responder con precisión.\n"
-    # Si no es tema de nutrición, no agregar contexto extra: Phi-3 actúa como asistente general
+        contexto_nutricional = "\nResponde solo con información nutricional basada en la base de datos proporcionada. Si no tienes datos, indica que no puedes responder con precisión.\n"
+    # Si no es tema de nutrición, no agregar contexto nutricional
+    elif es_nutricion:
+        contexto_nutricional = "\nResponde solo con información nutricional basada en la base de datos proporcionada. Si no tienes datos, indica que no puedes responder con precisión.\n"
+    # Si no es tema de nutrición, no agregar contexto nutricional
 
-    # Instrucción de sistema profesional para el modelo (simplificada)
+    # Instrucción de sistema profesional para el modelo
     system_instruction = (
         "<|system|>\n"
         "Eres Calyx AI, un asistente inteligente especializado en nutrición, pero también puedes responder preguntas generales siempre que sean apropiadas. "
         "Evita responder con historias personales, experiencias laborales, universidades, anécdotas o cosas inventadas. "
         "Responde siempre en español, de forma breve, clara y profesional. "
-        "Si no sabes algo con certeza, admite tu límite con honestidad.\n"
+        "Si no sabes algo con certeza, admite tu límite con honestidad. "
+        "Nunca repitas literalmente el mensaje del usuario, ni imites sus palabras o frases.\n"
+        f"{contexto_nutricional}"
     )
-    # Modular el contexto extra según el tipo de pregunta
-    if es_nutricion:
-        contexto_extra = ("\nSi la pregunta involucra alimentos o nutrición, responde basado en datos reales. "
-                          "No inventes datos si no están en la base.\n")
-    else:
-        contexto_extra = "\nSi es una pregunta general, responde de forma simple y breve.\n"
-    prompt_final = f"{system_instruction}{contexto_extra}<|user|>\n{prompt}\n<|assistant|>\n"
+    # Prompt reforzado para respuestas cerradas y profesionales
+    prompt_final = f"{system_instruction}<|user|>\n{prompt}\n<|assistant|>\n"
     if not ia_engine.is_ready():
         status = ia_engine.get_status()
         print(f"[LOG] /chat error: IA engine not ready: {status['message']}")
         return JSONResponse({"error": status["message"]}, status_code=503 if status["status"]=="loading" else 500)
     try:
-        response = ia_engine.generate(prompt_final)
-        # Filtrar la respuesta: eliminar líneas que contengan 'Usuario:' o 'Assistant:' y dejar solo la primera línea relevante
-        # Filtrar líneas irrelevantes: saludos, profesiones, universidades, etc.
+        # --- Parámetros de generación robustos ---
+        gen_args = {
+            "max_new_tokens": 180,  # Respuestas completas
+            "temperature": 0.6,
+            "top_p": 0.9,
+        }
+        # Si el motor soporta stop tokens, pásalos aquí (simulación si no)
+        stop_tokens = ["<|user|>", "<|system|>"]
+        # Llamada flexible: si ia_engine.generate acepta kwargs
+        import inspect
+        sig = inspect.signature(ia_engine.generate)
+        if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
+            response = ia_engine.generate(prompt_final, stop=stop_tokens, **gen_args)
+        else:
+            response = ia_engine.generate(prompt_final)
+        # --- Simular stop tokens si el modelo no los soporta ---
+        for stop in stop_tokens:
+            idx = response.find(stop)
+            if idx != -1:
+                response = response[:idx]
+        # --- Filtrado y postprocesado ---
         import re
+        import difflib
         lines = [l for l in response.splitlines() if l.strip() and not re.search(r"usuario:|assistant:|profesor|universidad|referencia|finanzas|mercado|analista|complutense|maestr[ií]a|trabajo", l, re.IGNORECASE)]
-        # Si hay líneas que no sean saludos genéricos, tomar la primera relevante
+        def es_imitacion(linea):
+            linea_norm = linea.strip().lower()
+            prompt_norm = prompt.strip().lower()
+            if linea_norm == prompt_norm:
+                return True
+            for p in [prompt] + prompt.split('\n'):
+                p_norm = p.strip().lower()
+                if p_norm and difflib.SequenceMatcher(None, linea_norm, p_norm).ratio() > 0.85:
+                    return True
+            return False
         for l in lines:
-            if not re.match(r"^(hola|buenas|buenos|qué tal|cómo va|gracias|estoy bien|saludo)", l.strip(), re.IGNORECASE):
+            if (not re.match(r"^(hola|buenas|buenos|qué tal|cómo va|gracias|estoy bien|saludo)", l.strip(), re.IGNORECASE)
+                and not es_imitacion(l)
+                and l.strip().lower() not in ["hola", "hola, buenas tardes", "hola, buenas tardes!", "hola, buenas tardes!!"]):
                 clean_response = l.strip()
                 break
         else:
-            clean_response = lines[0].strip() if lines else response.strip()
+            clean_response = next((l.strip() for l in lines if l.strip()), response.strip())
+        # --- Detectar respuesta inconclusa y ofrecer continuar ---
+        if clean_response.endswith(" para") or clean_response.endswith(" para.") or clean_response.endswith(" para...") or clean_response.endswith(" para…") or clean_response.endswith(" para,") or clean_response.endswith(" para:"):
+            clean_response += " ¿Quieres que continúe la respuesta?"
+        # Postprocesar para evitar saludos reflejo
+        clean_response = postprocesar_respuesta(prompt, clean_response)
         print(f"[LOG] /chat response: {clean_response}")
         return {"response": clean_response}
     except Exception as e:
