@@ -116,6 +116,11 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
 
     def get_mas_comun_flexible(rows, nombre_busqueda=None):
         if nombre_busqueda:
+            # 1. Buscar coincidencia exacta (ignorando acentos y mayúsculas)
+            for row in rows:
+                if limpiar_nombre(row[1]) == limpiar_nombre(nombre_busqueda):
+                    return row
+            # 2. Si no hay exacta, buscar coincidencia flexible (substring)
             for row in rows:
                 if comparar_flexible(row[1], nombre_busqueda):
                     return row
@@ -175,7 +180,65 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
     }
     # Si es completa, mostrar todos los campos menos id
     if es_completa:
-        alimento_filtrado = {k.title(): escalar(v) if k.lower() not in ["alimento","grupo de alimentos","unidad"] else v for k, v in alimento_dict.items() if k.lower() != "id"}
+        # --- Formato consola tipo bloque para animación de tipeo ---
+        def safe(v):
+            return v if v not in [None, "", "ND"] else "ND"
+        bloque = []
+        bloque.append("[ CONSOLA NUTRICIÓN ]")
+        bloque.append(f"Información nutricional: {alimento_dict.get('alimento', '').title()}")
+        bloque.append("")
+        bloque.append("ALIMENTO:")
+        bloque.append(f"  Nombre: {safe(alimento_dict.get('alimento',''))}")
+        bloque.append(f"  Grupo: {safe(alimento_dict.get('grupo de alimentos',''))}")
+        bloque.append("")
+        bloque.append("PORCIÓN:")
+        bloque.append(f"  Cantidad: {safe(alimento_dict.get('cantidad',''))}")
+        bloque.append(f"  Unidad: {safe(alimento_dict.get('unidad',''))}")
+        bloque.append(f"  Peso Neto: {safe(alimento_dict.get('peso neto (g)',''))} g")
+        bloque.append(f"  Peso Bruto: {safe(alimento_dict.get('peso bruto (g)',''))} g")
+        bloque.append("")
+        bloque.append("MACRONUTRIENTES:")
+        bloque.append(f"  Energía: {safe(alimento_dict.get('energia (kcal)',''))} kcal")
+        bloque.append(f"  Proteína: {safe(alimento_dict.get('proteina (g)',''))} g")
+        bloque.append(f"  Lípidos: {safe(alimento_dict.get('lipidos (g)',''))} g")
+        bloque.append(f"  Carbohidratos: {safe(alimento_dict.get('hidratos de carbono (g)',''))} g")
+        bloque.append(f"  Fibra: {safe(alimento_dict.get('fibra (g)',''))} g")
+        bloque.append(f"  Azúcar: {safe(alimento_dict.get('azucar (g)',''))}")
+        bloque.append("")
+        bloque.append("GRASAS:")
+        bloque.append(f"  Saturadas: {safe(alimento_dict.get('ag saturados (g)',''))} g")
+        bloque.append(f"  Monoinsaturadas: {safe(alimento_dict.get('ag monoinsaturados (g)',''))} g")
+        bloque.append(f"  Poliinsaturadas: {safe(alimento_dict.get('ag poliinsaturados (g)',''))} g")
+        bloque.append(f"  Colesterol: {safe(alimento_dict.get('colesterol (mg)',''))} mg")
+        bloque.append("")
+        bloque.append("MICRONUTRIENTES:")
+        bloque.append(f"  Calcio: {safe(alimento_dict.get('calcio (mg)',''))} mg")
+        bloque.append(f"  Hierro: {safe(alimento_dict.get('hierro (mg)',''))} mg")
+        bloque.append(f"  Potasio: {safe(alimento_dict.get('potasio (mg)',''))} mg")
+        bloque.append(f"  Sodio: {safe(alimento_dict.get('sodio (mg)',''))} mg")
+        bloque.append(f"  Fósforo: {safe(alimento_dict.get('fosforo (mg)',''))} mg")
+        bloque.append(f"  Vitamina A: {safe(alimento_dict.get('vitamina a (mg re)',''))}")
+        bloque.append(f"  Ácido Ascórbico: {safe(alimento_dict.get('acido ascorbico (mg)',''))}")
+        bloque.append(f"  Ácido Fólico: {safe(alimento_dict.get('acido folico (mcg)',''))} mcg")
+        bloque.append("")
+        bloque.append("ÍNDICES GLICÉMICOS:")
+        bloque.append(f"  IG: {safe(alimento_dict.get('indice glucemico',''))}")
+        bloque.append(f"  Carga Glicémica: {safe(alimento_dict.get('carga glucemica',''))}")
+        bloque.append("")
+        bloque.append("OTROS:")
+        bloque.append(f"  Etanol: {safe(alimento_dict.get('etanol (g)',''))} g")
+        # Unir todo
+        bloque_str = "\n".join(bloque)
+        # Definir mensaje igual que en el else
+        if not variantes:
+            mensaje = f"Se encontró una coincidencia exacta para '{nombre_busqueda}'."
+        else:
+            mensaje = f"No se encontró una coincidencia exacta para '{nombre_busqueda}'. Mostrando la opción más similar y algunas variantes."
+        return {
+            "bloque": bloque_str,
+            "mensaje": mensaje,
+            "sugerencias": variantes
+        }
     else:
         campos = campos_por_categoria.get(categoria, ["cantidad", "energia (kcal)"])
         alimento_filtrado = {}
@@ -210,6 +273,60 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
 
 @app.post("/chat")
 async def chat(request: Request):
+    print("[LOG] /chat endpoint called")
+    data = await request.json()
+    print(f"[LOG] /chat received data: {data}")
+    prompt = data.get("prompt", "").strip()
+    if not prompt:
+        print("[LOG] /chat error: No prompt provided")
+        return JSONResponse({"error": "No prompt provided"}, status_code=400)
+
+    # --- Lógica para fórmulas: pedir parámetros faltantes ---
+    import json
+    import re
+    # Cargar las fórmulas desde el JSON
+    with open("data_formulas.json", encoding="utf-8") as f:
+        formulas = json.load(f)
+
+    def detectar_formula_en_prompt(prompt, formulas):
+        prompt_l = prompt.lower()
+        for key, formula in formulas.items():
+            # Buscar por nombre exacto o alias
+            nombre = formula.get("nombre", "").lower()
+            if nombre and nombre in prompt_l:
+                return key, formula
+            # Buscar por clave interna
+            if key in prompt_l:
+                return key, formula
+        return None, None
+
+    def extraer_parametros_usuario(prompt, formula):
+        params = {}
+        for param in formula.get("parametros", []):
+            nombre = param["nombre"]
+            # Buscar el valor del parámetro en el prompt usando regex simple
+            # Ejemplo: "peso 80 kg", "altura 1.75 m", "edad 30 años", "sexo M"
+            patron = rf"{nombre}\s*:?\s*([\d\.,]+|[MFmf])"
+            m = re.search(patron, prompt, re.IGNORECASE)
+            if m:
+                valor = m.group(1).replace(",", ".")
+                params[nombre] = valor
+        return params
+
+    formula_key, formula = detectar_formula_en_prompt(prompt, formulas)
+    if formula:
+        # Extraer parámetros presentes en el prompt
+        params_usuario = extraer_parametros_usuario(prompt, formula)
+        # Detectar parámetros faltantes
+        faltantes = []
+        for param in formula["parametros"]:
+            if param["nombre"] not in params_usuario:
+                faltantes.append(param)
+        if faltantes:
+            preguntas = [p["pregunta"] for p in faltantes]
+            preguntas_str = " ".join(preguntas)
+            return {"response": f"Para calcular la fórmula '{formula['nombre']}' necesito más datos: {preguntas_str}"}
+        # Si no faltan parámetros, continuar con el flujo normal (prompt_final)
     # --- Postprocesador para saludos reflejo ---
     def es_solo_salida_reflejo(user_input: str, respuesta: str) -> bool:
         return respuesta.strip().lower() == user_input.strip().lower()
