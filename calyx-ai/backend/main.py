@@ -194,9 +194,16 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
         alimento_filtrado["Cantidad consultada"] = f"{cantidad_detectada} {unidad_detectada or 'g'}"
         alimento_filtrado["Cantidad base"] = f"{cantidad_base} g"
 
+    # --- Mensaje aclaratorio según coincidencia ---
+    if not variantes:
+        mensaje = f"Se encontró una coincidencia exacta para '{nombre_busqueda}'."
+    else:
+        mensaje = f"No se encontró una coincidencia exacta para '{nombre_busqueda}'. Mostrando la opción más similar y algunas variantes."
+
     resultado = {
         "alimento_principal": alimento_filtrado,
-        "sugerencias": variantes
+        "sugerencias": variantes,
+        "mensaje": mensaje
     }
     return resultado
 
@@ -211,10 +218,20 @@ async def chat(request: Request):
         texto = user_input.lower()
         return any(f in texto for f in ["hola", "buenas", "¿cómo estás", "como estas", "qué tal", "saludos"])
 
+    SALUDOS_VARIADOS = [
+        "¡Hola! ¿En qué puedo ayudarte hoy?",
+        "¡Buenas! ¿En qué puedo asistirte?",
+        "¡Hola de nuevo! ¿Tienes alguna otra consulta?",
+        "¡Aquí estoy! ¿Qué necesitas?",
+        "¡Saludos! ¿Cómo puedo ayudarte?",
+        "¡Listo para ayudarte! ¿Qué deseas saber?"
+    ]
+    import random
     def respuesta_para_saludo(user_input: str) -> str:
         if "¿cómo estás" in user_input.lower() or "como estas" in user_input.lower():
             return "¡Hola! Estoy bien, gracias por preguntar. ¿Cómo puedo ayudarte hoy?"
-        return "¡Hola! ¿En qué puedo ayudarte hoy?"
+        # Elegir un saludo aleatorio diferente cada vez
+        return random.choice(SALUDOS_VARIADOS)
 
     def postprocesar_respuesta(user_input: str, respuesta: str) -> str:
         if es_solo_salida_reflejo(user_input, respuesta) and respuesta_es_solo_saludo(user_input):
@@ -438,17 +455,45 @@ async def chat(request: Request):
                 if p_norm and difflib.SequenceMatcher(None, linea_norm, p_norm).ratio() > 0.85:
                     return True
             return False
+        # Filtrar eco y repeticiones
+        clean_response = None
         for l in lines:
-            if (not re.match(r"^(hola|buenas|buenos|qué tal|cómo va|gracias|estoy bien|saludo)", l.strip(), re.IGNORECASE)
-                and not es_imitacion(l)
-                and l.strip().lower() not in ["hola", "hola, buenas tardes", "hola, buenas tardes!", "hola, buenas tardes!!"]):
+            l_strip = l.strip()
+            # No mostrar saludos reflejo, imitaciones, ni repeticiones del prompt
+            # Filtrar líneas que repitan instrucciones del system prompt
+            instrucciones = [
+                "responde exclusivamente sobre el alimento proporcionado",
+                "no mezcles ni inventes otros",
+                "evita responder con historias personales",
+                "experiencias laborales",
+                "universidades",
+                "anécdotas",
+                "cosas inventadas",
+                "responde siempre en español",
+                "de forma breve, clara y profesional",
+                "si no sabes algo con certeza",
+                "admite tu límite con honestidad",
+                "nunca repitas literalmente el mensaje del usuario",
+                "ni imites sus palabras o frases",
+                "si la pregunta es sobre nutrición",
+                "responde solo con los datos nutricionales",
+                "sin frases introductorias",
+                "descripciones generales",
+                "relleno irrelevante"
+            ]
+            if (not re.match(r"^(hola|buenas|buenos|qué tal|cómo va|gracias|estoy bien|saludo)", l_strip, re.IGNORECASE)
+                and not es_imitacion(l_strip)
+                and l_strip.lower() not in ["hola", "hola, buenas tardes", "hola, buenas tardes!", "hola, buenas tardes!!"]
+                and l_strip.lower() != prompt.strip().lower()
+                and difflib.SequenceMatcher(None, l_strip.lower(), prompt.strip().lower()).ratio() < 0.8
+                and not any(instr in l_strip.lower() for instr in instrucciones)):
                 # Si es pregunta nutricional, filtrar frases de relleno
-                if es_nutricion and re.search(r"(es una|es un|es la|es el|sirve|utilizada|utilizado|perfecta|perfecto|acompañamiento|versátil|fresca|fresco|base sana|preparaciones|ensalada|plato principal|platos más elaborados|picada|picado|junto|otros vegetales|cruda|crudo|hamburguesas|preparaciones saladas|ingredientes para ensalada|ingrediente para ensalada|ingredientes para ensaladas|ingrediente para ensaladas)", l.strip(), re.IGNORECASE):
+                if es_nutricion and re.search(r"(es una|es un|es la|es el|sirve|utilizada|utilizado|perfecta|perfecto|acompañamiento|versátil|fresca|fresco|base sana|preparaciones|ensalada|plato principal|platos más elaborados|picada|picado|junto|otros vegetales|cruda|crudo|hamburguesas|preparaciones saladas|ingredientes para ensalada|ingrediente para ensalada|ingredientes para ensaladas|ingrediente para ensaladas)", l_strip, re.IGNORECASE):
                     continue
-                clean_response = l.strip()
+                clean_response = l_strip
                 break
-        else:
-            clean_response = next((l.strip() for l in lines if l.strip()), response.strip())
+        if not clean_response:
+            clean_response = next((l.strip() for l in lines if l.strip() and l.strip().lower() != prompt.strip().lower()), response.strip())
         # --- Detectar respuesta inconclusa y ofrecer continuar (palabra cortada o frase incompleta) ---
         if re.search(r"[a-záéíóúñ]{3,}$", clean_response) and not re.search(r"[\.\!\?]$", clean_response):
             # Si termina en palabra incompleta o sin puntuación final

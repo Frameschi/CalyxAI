@@ -1,5 +1,6 @@
 // components/ConsoleBlock.tsx
-import React from 'react';
+import React, { useState } from 'react';
+import Typewriter from 'react-typewriter-effect';
 import { motion } from 'framer-motion';
 
 interface ConsoleBlockProps {
@@ -52,23 +53,79 @@ function renderOutput(output: string) {
       </table>
     );
   }
-  // Si no es tabla, mostrar como texto
-  return <pre className="text-sm text-white whitespace-pre-wrap">{output}</pre>;
+  // Si no es tabla, mostrar con animación de tipeo
+  return (
+    <div className="text-sm text-white whitespace-pre-wrap">
+      <Typewriter
+        text={output}
+        typeSpeed={15}
+        cursorColor="#fff"
+        startDelay={100}
+      />
+    </div>
+  );
 }
 
-export const ConsoleBlock: React.FC<ConsoleBlockProps> = ({ title, input, output }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.3 }}
-    className={`${typeColors[title] || 'bg-gray-900'} text-white rounded-xl p-4 mb-4 shadow-md`}
-  >
-    <div className="flex items-center mb-2">
-      <span className="text-lg mr-2">{typeIcons[title] || '💬'}</span>
-      <span className="text-xs uppercase text-gray-300">{title}</span>
-    </div>
-    <pre className="text-sm text-green-300 whitespace-pre-wrap">{input}</pre>
-    <hr className="my-2 border-gray-600" />
-    {renderOutput(output)}
-  </motion.div>
-);
+export const ConsoleBlock: React.FC<ConsoleBlockProps> = ({ title, input, output }) => {
+  const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(input);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(editing ? editValue : input + '\n' + output);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
+
+  const handleEdit = () => {
+    setEditing(!editing);
+    setEditValue(input);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className={`bg-[#23272e] text-white rounded-xl p-0 mb-4 shadow-md border border-gray-800 font-mono`}
+      style={{ overflow: 'hidden' }}
+    >
+      <div className="flex items-center justify-between px-4 py-3 bg-[#23272e] border-b border-gray-800 rounded-t-xl">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{typeIcons[title] || '💬'}</span>
+          <span className="text-xs uppercase text-gray-300 font-semibold tracking-wide">{title || 'Bloque Técnico'}</span>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={handleCopy}
+            className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded border border-gray-600 text-gray-200 transition"
+            title="Copiar bloque"
+          >
+            {copied ? 'Copiado!' : 'Copiar'}
+          </button>
+          <button
+            onClick={handleEdit}
+            className={`px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded border border-gray-600 text-gray-200 transition ${editing ? 'font-bold' : ''}`}
+            title="Editar entrada"
+          >
+            {editing ? 'Cancelar' : 'Editar'}
+          </button>
+        </div>
+      </div>
+      <div className="px-4 pt-3 pb-2">
+        {editing ? (
+          <textarea
+            className="w-full bg-gray-900 text-green-300 text-sm font-mono rounded p-2 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-600 resize-vertical"
+            value={editValue}
+            onChange={e => setEditValue(e.target.value)}
+            rows={Math.max(2, editValue.split('\n').length)}
+          />
+        ) : (
+          <pre className="text-sm text-green-300 font-mono whitespace-pre-wrap mb-2">{input}</pre>
+        )}
+        <hr className="my-2 border-gray-700" />
+        {renderOutput(output)}
+      </div>
+    </motion.div>
+  );
+};

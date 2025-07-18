@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { ConsoleRenderer } from "../components/ConsoleRenderer";
+import { esBloqueYaml } from "../utils/formatConsole";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export default function Chat() {
   const [messages, setMessages] = useState([
-    { from: "ai", text: "¡Hola! ¿En qué puedo ayudarte hoy?" },
+    { from: "ai", text: "¡Hola! ¿En qué puedo ayudarte hoy?", type: "text" },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,7 +23,7 @@ export default function Chat() {
   const handleSend = async () => {
     if (input.trim() === "" || loading) return;
     const userMsg = input;
-    setMessages([...messages, { from: "user", text: userMsg }]);
+    setMessages([...messages, { from: "user", text: userMsg, type: "text" }]);
     setInput("");
     setLoading(true);
     try {
@@ -44,51 +46,74 @@ export default function Chat() {
           const res = await fetch(`${API_URL}/alimento?nombre=${encodeURIComponent(nombreParam)}`);
           const data = await res.json();
           if (data.error) {
-            setMessages(msgs => [...msgs, { from: "ai", text: `No se encontró información para "${alimentoDetectado}".` }]);
+            setMessages(msgs => [...msgs, { from: "ai", text: `No se encontró información para \"${alimentoDetectado}\".`, type: "text" }]);
           } else {
-            let respuesta = `Información de ${alimentoDetectado} (más común):\n`;
+            let respuesta = '';
+            if (data.mensaje) {
+              respuesta += `🛈 ${data.mensaje}\n\n`;
+            }
+            const nombreMostrado = data.alimento_principal.Alimento || alimentoDetectado;
+            let encabezado = `Información de ${alimentoDetectado}`;
+            if (nombreMostrado.toLowerCase() !== alimentoDetectado.toLowerCase()) {
+              encabezado += ` (mostrando variante: ${nombreMostrado})`;
+            }
+            respuesta += `${encabezado}:\n`;
             for (const [k, v] of Object.entries(data.alimento_principal)) {
               respuesta += `• ${k}: ${v}\n`;
             }
             if (data.sugerencias && data.sugerencias.length > 0) {
               respuesta += `\nOtras variantes: ${data.sugerencias.join(", ")}`;
             }
-            setMessages(msgs => [...msgs, { from: "ai", text: respuesta }]);
+            const tipo = esBloqueYaml(respuesta) ? "yaml" : "text";
+            setMessages(msgs => [...msgs, { from: "ai", text: respuesta, type: tipo }]);
           }
         } catch (err) {
-          setMessages(msgs => [...msgs, { from: "ai", text: "Error de conexión con el backend de alimentos." }]);
+          setMessages(msgs => [...msgs, { from: "ai", text: "Error de conexión con el backend de alimentos.", type: "text" }]);
         }
         return;
       }
 
       // Si no es pregunta de alimento, usar IA general
       try {
+        // Mantener contexto: enviar historial de mensajes relevantes
+        const contexto = messages.slice(-6).map(m => `${m.from}: ${m.text}`).join('\n');
+        const promptFinal = `${contexto}\nuser: ${userMsg}`;
         const controller = window.AbortController ? new window.AbortController() : new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 60000); // 60 segundos para pruebas
+        const timeoutId = window.setTimeout(() => controller.abort(), 60000);
         try {
-          console.log('Enviando petición a /chat...');
           const res = await fetch(`${API_URL}/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: userMsg }),
+            body: JSON.stringify({ prompt: promptFinal }),
             signal: controller.signal
           });
           window.clearTimeout(timeoutId);
-          console.log('Respuesta recibida de /chat:', res);
           const data = await res.json();
-          console.log('JSON parseado:', data);
-          setMessages(msgs => [...msgs, { from: "ai", text: data.response || "(Sin respuesta)" }]);
+          // Si la respuesta está cortada, avisar y sugerir continuar
+          let respuesta = data.response || "(Sin respuesta)";
+          if (respuesta.endsWith("¿Quieres que continúe la respuesta?")) {
+            respuesta = respuesta.replace("¿Quieres que continúe la respuesta?", "[Respuesta incompleta. Escribe 'continuar' para seguir.] ");
+          }
+          // Explicar limitaciones técnicas de forma clara y útil
+          if (/no estoy capacitado para calcular/i.test(respuesta)) {
+            respuesta += "\nPuedes usar el bloque técnico para cálculos simples, o consultar fuentes confiables para resultados médicos.";
+          }
+          // Evitar respuestas genéricas
+          if (/porción recomendada|consulta a un experto|aplicaciones dedicadas/i.test(respuesta)) {
+            respuesta += "\nSi necesitas datos concretos, por favor especifica cantidad, unidad y contexto.";
+          }
+          const tipo = esBloqueYaml(respuesta) ? "yaml" : "text";
+          setMessages(msgs => [...msgs, { from: "ai", text: respuesta, type: tipo }]);
         } catch (err: any) {
           window.clearTimeout(timeoutId);
-          console.error('Error en fetch /chat:', err);
           if (err && err.name === 'AbortError') {
-            setMessages(msgs => [...msgs, { from: "ai", text: "El servidor está tardando demasiado en responder. Intenta de nuevo más tarde." }]);
+          setMessages(msgs => [...msgs, { from: "ai", text: "El servidor está tardando demasiado en responder. Intenta de nuevo más tarde.", type: "text" }]);
           } else {
-            setMessages(msgs => [...msgs, { from: "ai", text: "Error de conexión con el backend." }]);
+            setMessages(msgs => [...msgs, { from: "ai", text: "Error de conexión con el backend.", type: "text" }]);
           }
         }
       } catch (err) {
-        setMessages(msgs => [...msgs, { from: "ai", text: "Error inesperado en el frontend." }]);
+        setMessages(msgs => [...msgs, { from: "ai", text: "Error inesperado en el frontend.", type: "text" }]);
       }
     } finally {
       setLoading(false);
@@ -98,20 +123,31 @@ export default function Chat() {
   return (
     <div className="flex flex-col h-screen bg-white">
       <div className="flex-1 overflow-y-auto p-6">
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`mb-4 flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}
-          >
-            {msg.from === "user" ? (
-              <div className="bg-gray-100 text-gray-900 px-4 py-2 rounded-2xl max-w-lg shadow border border-gray-300">
-                {msg.text}
+        {messages.map((msg, i) => {
+          if (msg.from === "user") {
+            return (
+              <div
+                key={i}
+                className="mb-4 flex justify-end"
+              >
+                <div className="bg-gray-100 text-gray-900 px-4 py-2 rounded-2xl max-w-lg shadow border border-gray-300">
+                  {msg.text}
+                </div>
               </div>
-            ) : (
-              <div className="text-base text-gray-800 max-w-lg whitespace-pre-line">{msg.text}</div>
-            )}
-          </div>
-        ))}
+            );
+          } else if (msg.type === "yaml") {
+            // Renderizar bloque YAML
+            const { ConsoleBlockYaml } = require("../components/ConsoleBlockYaml");
+            return <ConsoleBlockYaml key={i} input={msg.text} />;
+          } else {
+            // Renderizar bloque técnico o texto normal
+            return (
+              <div key={i} className="mb-4 flex justify-start">
+                <ConsoleRenderer text={msg.text} />
+              </div>
+            );
+          }
+        })}
       </div>
       <div className="p-6 bg-transparent">
         <div className="flex items-center border border-black rounded-2xl px-4 py-2 shadow-md bg-white">
