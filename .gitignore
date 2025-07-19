@@ -1,0 +1,11 @@
+# Evitar subir dependencias y archivos sensibles
+node_modules/
+.env
+*.pem
+*.key
+*.crt
+.DS_Store
+__pycache__/
+*.sqlite
+*.db
+*.log
