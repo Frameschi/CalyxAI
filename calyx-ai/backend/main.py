@@ -1,11 +1,14 @@
 
+
 from fastapi import FastAPI, Request, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-
 import os
 import sqlite3
 from ai_engine import IAEngine
+# Importar módulos de utilidades y cálculos
+from utils.validators import validate_food_input
+from calculos.nutricion import calcular_info_nutricional_basica, calcular_info_nutricional_completa
 
 
 
@@ -65,8 +68,9 @@ def get_mas_comun(rows, nombre_busqueda=None):
 @app.get("/alimento")
 def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a buscar")):
     print(f"[LOG] /alimento endpoint called with nombre={nombre}")
-    # Detectar si es petición de información completa y extraer el nombre real
     import unicodedata
+    import re
+    # --- Limpieza y parsing de nombre y cantidad ---
     def limpiar_nombre(texto):
         texto = texto.lower()
         texto = texto.replace("informacion completa de", "").replace("información completa de", "")
@@ -78,9 +82,6 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
         texto = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
         return texto
 
-
-    # Detectar cantidad y unidad en la consulta (ej: "180g de pollo cocido")
-    import re
     cantidad_detectada = None
     unidad_detectada = None
     nombre_sin_cantidad = nombre
@@ -90,7 +91,6 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
         unidad_detectada = match_cant.group(3) or "g"
         nombre_sin_cantidad = match_cant.group(4)
     else:
-        # Buscar "de [alimento]" sin cantidad
         match_simple = re.search(r"de\s+(.+)", nombre.lower())
         if match_simple:
             nombre_sin_cantidad = match_simple.group(1)
@@ -107,7 +107,6 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
     def comparar_flexible(a, b):
         a = limpiar_nombre(a)
         b = limpiar_nombre(b)
-        # Coincidencia exacta o substring flexible para variantes sugeridas
         if a == b:
             return True
         if a in b or b in a:
@@ -116,21 +115,19 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
 
     def get_mas_comun_flexible(rows, nombre_busqueda=None):
         if nombre_busqueda:
-            # 1. Buscar coincidencia exacta (ignorando acentos y mayúsculas)
             for row in rows:
                 if limpiar_nombre(row[1]) == limpiar_nombre(nombre_busqueda):
                     return row
-            # 2. Si no hay exacta, buscar coincidencia flexible (substring)
             for row in rows:
                 if comparar_flexible(row[1], nombre_busqueda):
                     return row
         return rows[0] if rows else None
 
     mas_comun = get_mas_comun_flexible(rows, nombre_busqueda)
-    variantes = [row[1] for row in rows if row != mas_comun][:4]  # Limitar a máximo 4 sugerencias
-
+    variantes = [row[1] for row in rows if row != mas_comun][:4]
     alimento_dict = dict(zip(columns, mas_comun))
-    # Detectar cantidad base del alimento en la base
+
+    # Detectar cantidad base
     cantidad_base = None
     for k in alimento_dict:
         if k.lower() in ["cantidad", "peso bruto (g)", "peso neto (g)"]:
@@ -140,20 +137,8 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
             except:
                 pass
     if not cantidad_base:
-        cantidad_base = 100.0  # Asumir 100g si no hay campo claro
-
-    # Si el usuario pidió una cantidad específica, calcular valores proporcionales
-    if cantidad_detectada:
-        factor = cantidad_detectada / cantidad_base
-    else:
-        factor = 1.0
-
-    def escalar(valor):
-        try:
-            v = float(str(valor).replace(",",".").split()[0])
-            return round(v * factor, 2)
-        except:
-            return valor
+        cantidad_base = 100.0
+    factor = (cantidad_detectada / cantidad_base) if cantidad_detectada else 1.0
 
     # --- Selección de campos por categoría ---
     categoria = alimento_dict.get("grupo de alimentos", "").strip().lower()
@@ -178,97 +163,52 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
         "bebidas alcohólicas": ["cantidad", "energia (kcal)", "etanol (g)"],
         "libres":          ["cantidad", "energia (kcal)", "sodio (mg)"]
     }
-    # Si es completa, mostrar todos los campos menos id
+
+    # --- Estructuración profesional de la respuesta ---
     if es_completa:
-        # --- Formato consola tipo bloque para animación de tipeo ---
-        def safe(v):
-            return v if v not in [None, "", "ND"] else "ND"
-        bloque = []
-        bloque.append("[ CONSOLA NUTRICIÓN ]")
-        bloque.append(f"Información nutricional: {alimento_dict.get('alimento', '').title()}")
-        bloque.append("")
-        bloque.append("ALIMENTO:")
-        bloque.append(f"  Nombre: {safe(alimento_dict.get('alimento',''))}")
-        bloque.append(f"  Grupo: {safe(alimento_dict.get('grupo de alimentos',''))}")
-        bloque.append("")
-        bloque.append("PORCIÓN:")
-        bloque.append(f"  Cantidad: {safe(alimento_dict.get('cantidad',''))}")
-        bloque.append(f"  Unidad: {safe(alimento_dict.get('unidad',''))}")
-        bloque.append(f"  Peso Neto: {safe(alimento_dict.get('peso neto (g)',''))} g")
-        bloque.append(f"  Peso Bruto: {safe(alimento_dict.get('peso bruto (g)',''))} g")
-        bloque.append("")
-        bloque.append("MACRONUTRIENTES:")
-        bloque.append(f"  Energía: {safe(alimento_dict.get('energia (kcal)',''))} kcal")
-        bloque.append(f"  Proteína: {safe(alimento_dict.get('proteina (g)',''))} g")
-        bloque.append(f"  Lípidos: {safe(alimento_dict.get('lipidos (g)',''))} g")
-        bloque.append(f"  Carbohidratos: {safe(alimento_dict.get('hidratos de carbono (g)',''))} g")
-        bloque.append(f"  Fibra: {safe(alimento_dict.get('fibra (g)',''))} g")
-        bloque.append(f"  Azúcar: {safe(alimento_dict.get('azucar (g)',''))}")
-        bloque.append("")
-        bloque.append("GRASAS:")
-        bloque.append(f"  Saturadas: {safe(alimento_dict.get('ag saturados (g)',''))} g")
-        bloque.append(f"  Monoinsaturadas: {safe(alimento_dict.get('ag monoinsaturados (g)',''))} g")
-        bloque.append(f"  Poliinsaturadas: {safe(alimento_dict.get('ag poliinsaturados (g)',''))} g")
-        bloque.append(f"  Colesterol: {safe(alimento_dict.get('colesterol (mg)',''))} mg")
-        bloque.append("")
-        bloque.append("MICRONUTRIENTES:")
-        bloque.append(f"  Calcio: {safe(alimento_dict.get('calcio (mg)',''))} mg")
-        bloque.append(f"  Hierro: {safe(alimento_dict.get('hierro (mg)',''))} mg")
-        bloque.append(f"  Potasio: {safe(alimento_dict.get('potasio (mg)',''))} mg")
-        bloque.append(f"  Sodio: {safe(alimento_dict.get('sodio (mg)',''))} mg")
-        bloque.append(f"  Fósforo: {safe(alimento_dict.get('fosforo (mg)',''))} mg")
-        bloque.append(f"  Vitamina A: {safe(alimento_dict.get('vitamina a (mg re)',''))}")
-        bloque.append(f"  Ácido Ascórbico: {safe(alimento_dict.get('acido ascorbico (mg)',''))}")
-        bloque.append(f"  Ácido Fólico: {safe(alimento_dict.get('acido folico (mcg)',''))} mcg")
-        bloque.append("")
-        bloque.append("ÍNDICES GLICÉMICOS:")
-        bloque.append(f"  IG: {safe(alimento_dict.get('indice glucemico',''))}")
-        bloque.append(f"  Carga Glicémica: {safe(alimento_dict.get('carga glucemica',''))}")
-        bloque.append("")
-        bloque.append("OTROS:")
-        bloque.append(f"  Etanol: {safe(alimento_dict.get('etanol (g)',''))} g")
-        # Unir todo
-        bloque_str = "\n".join(bloque)
-        # Definir mensaje igual que en el else
-        if not variantes:
-            mensaje = f"Se encontró una coincidencia exacta para '{nombre_busqueda}'."
-        else:
-            mensaje = f"No se encontró una coincidencia exacta para '{nombre_busqueda}'. Mostrando la opción más similar y algunas variantes."
+        # Información nutricional completa como lista de líneas para animación
+        info_completa = calcular_info_nutricional_completa(alimento_dict, alimento_dict)
+        mensaje = (
+            f"Se encontró una coincidencia exacta para '{nombre_busqueda}'."
+            if not variantes else
+            f"No se encontró una coincidencia exacta para '{nombre_busqueda}'. Mostrando la opción más similar y algunas variantes."
+        )
         return {
-            "bloque": bloque_str,
+            "info_completa": info_completa,
             "mensaje": mensaje,
             "sugerencias": variantes
         }
     else:
+        # Información básica como filas (clave, valor)
         campos = campos_por_categoria.get(categoria, ["cantidad", "energia (kcal)"])
-        alimento_filtrado = {}
+        info_basica = {}
         for campo in campos:
             if campo in alimento_dict:
-                # Mostrar con nombre bonito
                 nombre_bonito = campo.replace("(g)", "").replace("(kcal)", "").replace("(mg)", "").replace("de ", "de").title().replace("De ", "de ").replace("Hidratos De Carbono", "Hidratos de Carbono")
-                alimento_filtrado[nombre_bonito] = escalar(alimento_dict[campo])
-        # Agregar unidad explícita si existe
+                valor = alimento_dict[campo]
+                try:
+                    v = float(str(valor).replace(",",".").split()[0])
+                    valor = round(v * factor, 2)
+                except:
+                    pass
+                info_basica[nombre_bonito] = valor
         unidad = alimento_dict.get("unidad", "g")
-        if "Cantidad" in alimento_filtrado:
-            alimento_filtrado = {"Cantidad": alimento_filtrado["Cantidad"], "Unidad": unidad, **{k: v for k, v in alimento_filtrado.items() if k != "Cantidad"}}
-
-    # Agregar info de cantidad solicitada si aplica
-    if cantidad_detectada:
-        alimento_filtrado["Cantidad consultada"] = f"{cantidad_detectada} {unidad_detectada or 'g'}"
-        alimento_filtrado["Cantidad base"] = f"{cantidad_base} g"
-
-    # --- Mensaje aclaratorio según coincidencia ---
-    if not variantes:
-        mensaje = f"Se encontró una coincidencia exacta para '{nombre_busqueda}'."
-    else:
-        mensaje = f"No se encontró una coincidencia exacta para '{nombre_busqueda}'. Mostrando la opción más similar y algunas variantes."
-
-    resultado = {
-        "alimento_principal": alimento_filtrado,
-        "sugerencias": variantes,
-        "mensaje": mensaje
-    }
-    return resultado
+        if "Cantidad" in info_basica:
+            info_basica = {"Cantidad": info_basica["Cantidad"], "Unidad": unidad, **{k: v for k, v in info_basica.items() if k != "Cantidad"}}
+        if cantidad_detectada:
+            info_basica["Cantidad consultada"] = f"{cantidad_detectada} {unidad_detectada or 'g'}"
+            info_basica["Cantidad base"] = f"{cantidad_base} g"
+        filas = calcular_info_nutricional_basica(alimento_dict, info_basica)
+        mensaje = (
+            f"Se encontró una coincidencia exacta para '{nombre_busqueda}'."
+            if not variantes else
+            f"No se encontró una coincidencia exacta para '{nombre_busqueda}'. Mostrando la opción más similar y algunas variantes."
+        )
+        return {
+            "filas": filas,
+            "mensaje": mensaje,
+            "sugerencias": variantes
+        }
 
 
 @app.post("/chat")

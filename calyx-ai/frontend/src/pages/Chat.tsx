@@ -51,22 +51,58 @@ export default function Chat() {
           const res = await fetch(`${API_URL}/alimento?nombre=${encodeURIComponent(nombreParam)}`);
           const data = await res.json();
           if (data.error) {
-            setMessages((msgs: Message[]) => [...msgs, { from: "ai", text: `No se encontró información para \"${alimentoDetectado}\".`, type: "text" }]);
+            setMessages((msgs: Message[]) => [...msgs, { from: "ai", text: data.error, type: "text" }]);
           } else {
             let respuesta = '';
             if (data.mensaje) {
               respuesta += `🛈 ${data.mensaje}\n\n`;
             }
-            const nombreMostrado = data.alimento_principal.Alimento || alimentoDetectado;
+            // Adaptar a la estructura real del backend
+            let principal = null;
+            if (data.filas && typeof data.filas === 'object') {
+              principal = data.filas;
+            } else if (data.info_completa && Array.isArray(data.info_completa)) {
+              principal = data.info_completa;
+            }
             let encabezado = `Información de ${alimentoDetectado}`;
-            if (nombreMostrado.toLowerCase() !== alimentoDetectado.toLowerCase()) {
-              encabezado += ` (mostrando variante: ${nombreMostrado})`;
+            if (principal) {
+              respuesta += `${encabezado}:\n`;
+              // Si principal es un objeto simple (no array)
+              if (principal && typeof principal === 'object' && !Array.isArray(principal)) {
+                // Si tiene clave/valor, mostrar solo el valor de "clave" y "valor" de forma amigable
+                if (principal.clave && principal.valor) {
+                  respuesta += `• ${principal.clave}: ${principal.valor}\n`;
+                } else {
+                  // Mostrar todos los campos excepto "clave", "valor", "linea"
+                  Object.entries(principal).forEach(([k, v]) => {
+                    if (!["clave", "valor", "linea"].includes(k)) {
+                      respuesta += `• ${k}: ${v}\n`;
+                    }
+                  });
+                }
+              } else if (Array.isArray(principal)) {
+                // Si es un array, mostrar cada objeto de forma limpia
+                principal.forEach((item) => {
+                  if (typeof item === 'object') {
+                    // Si el objeto tiene "clave" y "valor", mostrar solo eso
+                    if (item.clave && item.valor) {
+                      respuesta += `• ${item.clave}: ${item.valor}\n`;
+                    } else {
+                      // Mostrar todos los campos excepto "clave", "valor", "linea"
+                      Object.entries(item).forEach(([k, v]) => {
+                        if (!["clave", "valor", "linea"].includes(k)) {
+                          respuesta += `• ${k}: ${v}\n`;
+                        }
+                      });
+                    }
+                    respuesta += '\n';
+                  } else {
+                    respuesta += `${item}\n`;
+                  }
+                });
+              }
             }
-            respuesta += `${encabezado}:\n`;
-            for (const [k, v] of Object.entries(data.alimento_principal)) {
-              respuesta += `• ${k}: ${v}\n`;
-            }
-            if (data.sugerencias && data.sugerencias.length > 0) {
+            if (data.sugerencias && Array.isArray(data.sugerencias) && data.sugerencias.length > 0) {
               respuesta += `\nOtras variantes: ${data.sugerencias.join(", ")}`;
             }
             const tipo = esBloqueYaml(respuesta) ? "yaml" : "text";
