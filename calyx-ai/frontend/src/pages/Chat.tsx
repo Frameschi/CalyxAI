@@ -1,6 +1,7 @@
 
 import React, { useState } from "react";
 import { ConsoleRenderer } from "../components/ConsoleRenderer";
+import { ConsoleBlockYaml } from "../components/ConsoleBlockYaml";
 import { esBloqueYaml } from "../utils/formatConsole";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -9,7 +10,7 @@ export default function Chat() {
   interface Message {
     from: "ai" | "user";
     text: string;
-    type: "text" | "yaml";
+    type: "text" | "yaml" | "console";
   }
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -57,7 +58,6 @@ export default function Chat() {
             if (data.mensaje) {
               respuesta += `🛈 ${data.mensaje}\n\n`;
             }
-            // Adaptar a la estructura real del backend
             let principal = null;
             if (data.filas && typeof data.filas === 'object') {
               principal = data.filas;
@@ -65,48 +65,115 @@ export default function Chat() {
               principal = data.info_completa;
             }
             let encabezado = `Información de ${alimentoDetectado}`;
-            if (principal) {
+            // Unidades conocidas para mostrar junto al valor
+            const unidades: Record<string, string> = {
+              "cantidad": "",
+              "unidad": "",
+              "energia": "kcal",
+              "proteina": "g",
+              "lipidos": "g",
+              "hidratos de carbono": "g",
+              "ag saturados": "g",
+              "ag monoinsaturados": "g",
+              "ag poliinsaturados": "g",
+              "colesterol": "mg",
+              "azucar": "g",
+              "fibra": "g",
+              "vitamina a": "mg re",
+              "acido ascorbico": "mg",
+              "acido folico": "mg",
+              "calcio": "mg",
+              "hierro": "mg",
+              "potasio": "mg",
+              "sodio": "mg",
+              "fosforo": "mg",
+              "etanol": "g",
+              "ig": "",
+              "carga glicemica": ""
+            };
+            function formatearDato(k: any, v: any): string {
+              var kStr = (k === undefined || k === null) ? '' : String(k);
+              var key = kStr.length > 0 ? kStr.charAt(0).toUpperCase() + kStr.slice(1) : '';
+              var unidad = kStr && typeof kStr === 'string' ? (unidades[kStr.toLowerCase()] || "") : "";
+              return key + ': ' + v + (unidad ? ' ' + unidad : '');
+            }
+            // Si es info completa, mostrar en YAML organizado
+            if (principal && Array.isArray(principal) && nombreParam && nombreParam.toLowerCase().includes('completa')) {
+              // Convertir array de objetos a un solo objeto plano para YAML
+              let objYaml: Record<string, any> = {};
+              principal.forEach(function(item) {
+                if (typeof item === 'object' && item !== null) {
+                  Object.values(item).forEach(function(v) {
+                    if (typeof v === 'string' && v.includes(':')) {
+                      var partes = v.split(':');
+                      if (partes.length >= 3) {
+                        var clave = partes[1].trim();
+                        var valor = partes.slice(2).join(':').trim();
+                        objYaml[clave] = valor;
+                      } else if (partes.length === 2) {
+                        var clave2 = partes[0].replace(/^linea/i, '').trim();
+                        var valor2 = partes[1].trim();
+                        objYaml[clave2] = valor2;
+                      }
+                    }
+                  });
+                }
+              });
+              // Mostrar encabezado y YAML robusto
+              let yaml = `# ${encabezado}\n`;
+              Object.entries(objYaml).forEach(([k, v]) => {
+                yaml += `${k}: ${v}\n`;
+              });
+              if (data.sugerencias && Array.isArray(data.sugerencias) && data.sugerencias.length > 0) {
+                yaml += `Otras variantes: ${data.sugerencias.join(", ")}`;
+              }
+              setMessages(function(msgs) { return msgs.concat([{ from: "ai", text: yaml, type: "yaml" }]); });
+            } else if (principal) {
+              // Info básica: mostrar en texto organizado, no corrido
               respuesta += `${encabezado}:\n`;
-              // Si principal es un objeto simple (no array)
-              if (principal && typeof principal === 'object' && !Array.isArray(principal)) {
-                // Si tiene clave/valor, mostrar solo el valor de "clave" y "valor" de forma amigable
+              if (typeof principal === 'object' && !Array.isArray(principal)) {
                 if (principal.clave && principal.valor) {
-                  respuesta += `• ${principal.clave}: ${principal.valor}\n`;
+                  respuesta += '- ' + formatearDato(principal.clave, principal.valor) + '\n';
                 } else {
-                  // Mostrar todos los campos excepto "clave", "valor", "linea"
-                  Object.entries(principal).forEach(([k, v]) => {
-                    if (!["clave", "valor", "linea"].includes(k)) {
-                      respuesta += `• ${k}: ${v}\n`;
+                  Object.entries(principal).forEach(function(entry) {
+                    var k = entry[0], v = entry[1];
+                    if (["clave", "valor", "linea"].indexOf(k) === -1) {
+                      respuesta += '- ' + formatearDato(k, v) + '\n';
                     }
                   });
                 }
               } else if (Array.isArray(principal)) {
-                // Si es un array, mostrar cada objeto de forma limpia
-                principal.forEach((item) => {
-                  if (typeof item === 'object') {
-                    // Si el objeto tiene "clave" y "valor", mostrar solo eso
-                    if (item.clave && item.valor) {
-                      respuesta += `• ${item.clave}: ${item.valor}\n`;
-                    } else {
-                      // Mostrar todos los campos excepto "clave", "valor", "linea"
-                      Object.entries(item).forEach(([k, v]) => {
-                        if (!["clave", "valor", "linea"].includes(k)) {
-                          respuesta += `• ${k}: ${v}\n`;
+                principal.forEach(function(item) {
+                  if (typeof item === 'object' && item !== null) {
+                    Object.values(item).forEach(function(v) {
+                      if (typeof v === 'string' && v.includes(':')) {
+                        var partes = v.split(':');
+                        if (partes.length >= 3) {
+                          var clave = partes[1].trim();
+                          var valor = partes.slice(2).join(':').trim();
+                          respuesta += '- ' + clave.charAt(0).toUpperCase() + clave.slice(1) + ': ' + valor + '\n';
+                        } else if (partes.length === 2) {
+                          var clave2 = partes[0].replace(/^linea/i, '').trim();
+                          var valor2 = partes[1].trim();
+                          respuesta += '- ' + clave2.charAt(0).toUpperCase() + clave2.slice(1) + ': ' + valor2 + '\n';
+                        } else {
+                          respuesta += '- ' + v + '\n';
                         }
-                      });
-                    }
+                      } else {
+                        respuesta += '- ' + String(v) + '\n';
+                      }
+                    });
                     respuesta += '\n';
                   } else {
-                    respuesta += `${item}\n`;
+                    respuesta += String(item) + '\n';
                   }
                 });
               }
+              if (data.sugerencias && Array.isArray(data.sugerencias) && data.sugerencias.length > 0) {
+                respuesta += `\nOtras variantes: ${data.sugerencias.join(", ")}`;
+              }
+              setMessages(function(msgs) { return msgs.concat([{ from: "ai", text: respuesta, type: "text" }]); });
             }
-            if (data.sugerencias && Array.isArray(data.sugerencias) && data.sugerencias.length > 0) {
-              respuesta += `\nOtras variantes: ${data.sugerencias.join(", ")}`;
-            }
-            const tipo = esBloqueYaml(respuesta) ? "yaml" : "text";
-            setMessages((msgs: Message[]) => [...msgs, { from: "ai", text: respuesta, type: tipo }]);
           }
         } catch (err) {
           setMessages((msgs: Message[]) => [...msgs, { from: "ai", text: "Error de conexión con el backend de alimentos.", type: "text" }]);
@@ -130,11 +197,8 @@ export default function Chat() {
           });
           window.clearTimeout(timeoutId);
           const data = await res.json();
-          // Si la respuesta está cortada, avisar y sugerir continuar
+          // Siempre mostrar la respuesta completa, sin preguntar por continuar
           let respuesta = data.response || "(Sin respuesta)";
-          if (respuesta.endsWith("¿Quieres que continúe la respuesta?")) {
-            respuesta = respuesta.replace("¿Quieres que continúe la respuesta?", "[Respuesta incompleta. Escribe 'continuar' para seguir.] ");
-          }
           // Explicar limitaciones técnicas de forma clara y útil
           if (/no estoy capacitado para calcular/i.test(respuesta)) {
             respuesta += "\nPuedes usar el bloque técnico para cálculos simples, o consultar fuentes confiables para resultados médicos.";
@@ -178,7 +242,6 @@ export default function Chat() {
             );
           } else if (msg.type === "yaml") {
             // Renderizar bloque YAML
-            const { ConsoleBlockYaml } = require("../components/ConsoleBlockYaml");
             return <ConsoleBlockYaml key={i} input={msg.text} />;
           } else {
             // Renderizar bloque técnico o texto normal

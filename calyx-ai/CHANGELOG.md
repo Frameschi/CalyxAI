@@ -1,3 +1,9 @@
+# [1.3.1] - 2025-07-18
+### Cambios principales
+- Frontend: ahora la información completa de alimentos se muestra en bloque YAML robusto y legible, sin errores de pantalla blanca.
+- Se corrigió el import de ConsoleBlockYaml para compatibilidad total con React/Electron.
+- El bloque YAML es tolerante a errores y nunca rompe el chat.
+- Mejoras de robustez y experiencia visual en la consola de información nutricional.
 # Changelog
 
 ## [1.2.2] - 2025-07-14
