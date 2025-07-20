@@ -1,3 +1,9 @@
+## [1.3.2] - 2025-07-20
+### Cambios principales
+- El campo "id" ya no aparece en el bloque YAML ni en la tabla de información completa de alimentos.
+- "Otras variantes" ahora siempre se muestra como nota separada, fuera del bloque YAML/tabular.
+- Visualización estandarizada y robusta para todos los alimentos.
+
 # [1.3.1] - 2025-07-18
 ### Cambios principales
 - Frontend: ahora la información completa de alimentos se muestra en bloque YAML robusto y legible, sin errores de pantalla blanca.

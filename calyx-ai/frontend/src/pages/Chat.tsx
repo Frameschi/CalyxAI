@@ -99,7 +99,7 @@ export default function Chat() {
             }
             // Si es info completa, mostrar en YAML organizado
             if (principal && Array.isArray(principal) && nombreParam && nombreParam.toLowerCase().includes('completa')) {
-              // Convertir array de objetos a un solo objeto plano para YAML
+              // Convertir array de objetos a un solo objeto plano para YAML, filtrando 'id'
               let objYaml: Record<string, any> = {};
               principal.forEach(function(item) {
                 if (typeof item === 'object' && item !== null) {
@@ -109,11 +109,11 @@ export default function Chat() {
                       if (partes.length >= 3) {
                         var clave = partes[1].trim();
                         var valor = partes.slice(2).join(':').trim();
-                        objYaml[clave] = valor;
+                        if (clave.toLowerCase() !== 'id') objYaml[clave] = valor;
                       } else if (partes.length === 2) {
                         var clave2 = partes[0].replace(/^linea/i, '').trim();
                         var valor2 = partes[1].trim();
-                        objYaml[clave2] = valor2;
+                        if (clave2.toLowerCase() !== 'id') objYaml[clave2] = valor2;
                       }
                     }
                   });
@@ -124,10 +124,14 @@ export default function Chat() {
               Object.entries(objYaml).forEach(([k, v]) => {
                 yaml += `${k}: ${v}\n`;
               });
-              if (data.sugerencias && Array.isArray(data.sugerencias) && data.sugerencias.length > 0) {
-                yaml += `Otras variantes: ${data.sugerencias.join(", ")}`;
-              }
-              setMessages(function(msgs) { return msgs.concat([{ from: "ai", text: yaml, type: "yaml" }]); });
+              setMessages(function(msgs) {
+                let arr = msgs.concat([{ from: "ai", text: yaml, type: "yaml" }]);
+                // Mostrar sugerencias como nota separada
+                if (data.sugerencias && Array.isArray(data.sugerencias) && data.sugerencias.length > 0) {
+                  arr = arr.concat([{ from: "ai", text: `Otras variantes: ${data.sugerencias.join(", ")}` , type: "text" }]);
+                }
+                return arr;
+              });
             } else if (principal) {
               // Info básica: mostrar en texto organizado, no corrido
               respuesta += `${encabezado}:\n`;
