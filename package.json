@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "lucide-react": "^0.525.0",
     "react-typewriter-effect": "^1.1.0"
   }
 }

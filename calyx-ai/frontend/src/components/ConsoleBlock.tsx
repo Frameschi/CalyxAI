@@ -27,7 +27,7 @@ const typeIcons: Record<string, string> = {
 
 // Detectar si el output es una tabla (formato markdown simple)
 function renderOutput(output: string) {
-  // Detecta tablas markdown: filas separadas por \n, columnas por |
+  // Detecta tablas tipo markdown
   if (/^\s*\|(.+)\|\s*\n/.test(output)) {
     const rows = output.trim().split('\n').filter(r => r.includes('|'));
     const headers = rows[0].split('|').map(h => h.trim()).filter(Boolean);
@@ -53,15 +53,20 @@ function renderOutput(output: string) {
       </table>
     );
   }
-  // Si no es tabla, mostrar con animación de tipeo
+
+  // Mostrar línea por línea con animación
+  const lines = output.trim().split('\n');
   return (
-    <div className="text-sm text-white whitespace-pre-wrap">
-      <Typewriter
-        text={output}
-        typeSpeed={15}
-        cursorColor="#fff"
-        startDelay={100}
-      />
+    <div className="text-sm text-white whitespace-pre-wrap font-mono space-y-1">
+      {lines.map((line, index) => (
+        <Typewriter
+          key={index}
+          text={line}
+          typeSpeed={15}
+          cursorColor="#fff"
+          startDelay={index * 300}
+        />
+      ))}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 
 import React, { useState } from "react";
+import { Send } from "lucide-react";
 import { ConsoleRenderer } from "../components/ConsoleRenderer";
 import { ConsoleBlockYaml } from "../components/ConsoleBlockYaml";
 import { esBloqueYaml } from "../utils/formatConsole";
@@ -273,12 +274,7 @@ export default function Chat() {
             aria-label="Enviar"
             style={{ width: 56, height: 56 }}
           >
-            <img
-              src={window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? '/send-white.svg' : '/send-black.svg'}
-              alt="Enviar"
-              className="w-10 h-10"
-              style={{ filter: 'drop-shadow(0 0 1px #000)' }}
-            />
+            <Send size={28} color="#000" strokeWidth={2.2} className="rotate-45 mx-auto block" />
           </button>
         </div>
       </div>
