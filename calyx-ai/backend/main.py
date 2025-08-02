@@ -260,26 +260,33 @@ async def chat(request: Request):
             # Buscar expresiones tipo "var: valor unidad", "valor unidad var", "var=valor unidad", "valorunidadvar"
             for var in variantes:
                 # Ejemplo: "peso: 80kg", "80 kg peso", "peso=80 kilos", "80kg de peso"
-                patron1 = rf"{var}\s*[:=]?\s*([\d\.,]+)\s*(kg|kilogramos|kilos|g|gramos|cm|mts|mt|m)?"
-                patron2 = rf"([\d\.,]+)\s*(kg|kilogramos|kilos|g|gramos|cm|mts|mt|m)?\s*{var}"
+                patron1 = rf"{var}\s*[:=]?\s*([\d\.,]+)\s*(kg|kilogramos|kilos|g|gramos|cm|centimetros|mts|mt|m|metros)?"
+                patron2 = rf"([\d\.,]+)\s*(kg|kilogramos|kilos|g|gramos|cm|centimetros|mts|mt|m|metros)?\s*{var}"
                 patron3 = rf"{var}\s*[:=]?\s*([MFmf])"
+                
+                # También buscar patrones pegados como "175cm", "80kg"
+                patron_pegado = rf"(\d{{1,3}}(?:[\.,]\d+)?)\s*(cm|centimetros|kg|kilogramos|kilos|m|metros|mt|mts)"
+                
                 m1 = re.search(patron1, texto, re.IGNORECASE)
                 m2 = re.search(patron2, texto, re.IGNORECASE)
                 m3 = re.search(patron3, texto, re.IGNORECASE)
+                m_pegado = re.search(patron_pegado, texto, re.IGNORECASE)
+                
                 if m1:
                     valor = m1.group(1).replace(",", ".")
                     unidad = m1.group(2)
-                    # Normalizar unidades
+                    # Normalizar unidades para altura
                     if nombre == "altura":
-                        if unidad and unidad in ["cm", "mts", "mt"]:
-                            valor = str(float(valor) / 100)
-                        elif unidad and unidad in ["m", "metros"]:
-                            valor = str(float(valor))
+                        if unidad and unidad.lower() in ["cm", "centimetros"]:
+                            valor = str(float(valor) / 100)  # cm a metros
+                        elif unidad and unidad.lower() in ["m", "metros", "mt", "mts"]:
+                            valor = str(float(valor))  # ya en metros
+                    # Normalizar unidades para peso
                     if nombre == "peso":
-                        if unidad and unidad in ["kg", "kilogramos", "kilos"]:
-                            valor = str(float(valor))
-                        elif unidad and unidad in ["g", "gramos"]:
-                            valor = str(float(valor) / 1000)
+                        if unidad and unidad.lower() in ["kg", "kilogramos", "kilos"]:
+                            valor = str(float(valor))  # ya en kg
+                        elif unidad and unidad.lower() in ["g", "gramos"]:
+                            valor = str(float(valor) / 1000)  # g a kg
                     params[nombre] = valor
                     encontrado = True
                     break
@@ -287,14 +294,14 @@ async def chat(request: Request):
                     valor = m2.group(1).replace(",", ".")
                     unidad = m2.group(2)
                     if nombre == "altura":
-                        if unidad and unidad in ["cm", "mts", "mt"]:
+                        if unidad and unidad.lower() in ["cm", "centimetros"]:
                             valor = str(float(valor) / 100)
-                        elif unidad and unidad in ["m", "metros"]:
+                        elif unidad and unidad.lower() in ["m", "metros", "mt", "mts"]:
                             valor = str(float(valor))
                     if nombre == "peso":
-                        if unidad and unidad in ["kg", "kilogramos", "kilos"]:
+                        if unidad and unidad.lower() in ["kg", "kilogramos", "kilos"]:
                             valor = str(float(valor))
-                        elif unidad and unidad in ["g", "gramos"]:
+                        elif unidad and unidad.lower() in ["g", "gramos"]:
                             valor = str(float(valor) / 1000)
                     params[nombre] = valor
                     encontrado = True
@@ -304,22 +311,50 @@ async def chat(request: Request):
                     params[nombre] = valor
                     encontrado = True
                     break
-            # Si no se encontró, buscar expresiones pegadas tipo "175cm", "80kg"
+                elif m_pegado and not encontrado:
+                    valor_num = m_pegado.group(1).replace(",", ".")
+                    unidad_detectada = m_pegado.group(2).lower()
+                    
+                    # Solo procesar si coincide con el parámetro que buscamos
+                    if nombre == "altura" and unidad_detectada in ["cm", "centimetros", "m", "metros", "mt", "mts"]:
+                        if unidad_detectada in ["cm", "centimetros"]:
+                            valor = str(float(valor_num) / 100)  # cm a metros
+                        else:
+                            valor = str(float(valor_num))  # ya en metros
+                        params[nombre] = valor
+                        encontrado = True
+                        break
+                    elif nombre == "peso" and unidad_detectada in ["kg", "kilogramos", "kilos"]:
+                        valor = str(float(valor_num))  # ya en kg
+                        params[nombre] = valor
+                        encontrado = True
+                        break
+            # Si no se encontró, buscar expresiones pegadas tipo "175cm", "80kg" con mayor precisión
             if not encontrado:
-                patron_pegado = None
                 if nombre == "altura":
-                    patron_pegado = r"(\d{2,3})\s*(cm|mts|mt)"
+                    # Buscar altura con unidades más completas
+                    patron_altura = r"(\d{1,3}(?:[\.,]\d+)?)\s*(cm|centimetros|centímetros|m|metros|mt|mts)(?:\s|$|[^\w])"
+                    match = re.search(patron_altura, texto, re.IGNORECASE)
+                    if match:
+                        valor_num = match.group(1).replace(",", ".")
+                        unidad = match.group(2).lower()
+                        if unidad in ["cm", "centimetros", "centímetros"]:
+                            valor = str(float(valor_num) / 100)  # cm a metros
+                        else:
+                            valor = str(float(valor_num))  # ya en metros
+                        params[nombre] = valor
+                        encontrado = True
                 elif nombre == "peso":
-                    patron_pegado = r"(\d{2,3})\s*(kg|kilogramos|kilos)"
-                if patron_pegado:
-                    mpeg = re.search(patron_pegado, texto, re.IGNORECASE)
-                    if mpeg:
-                        valor = mpeg.group(1)
-                        unidad = mpeg.group(2)
-                        if nombre == "altura":
-                            valor = str(float(valor) / 100)
-                        if nombre == "peso":
-                            valor = str(float(valor))
+                    # Buscar peso con unidades más completas
+                    patron_peso = r"(\d{1,3}(?:[\.,]\d+)?)\s*(kg|kilogramos|kilos|g|gramos)(?:\s|$|[^\w])"
+                    match = re.search(patron_peso, texto, re.IGNORECASE)
+                    if match:
+                        valor_num = match.group(1).replace(",", ".")
+                        unidad = match.group(2).lower()
+                        if unidad in ["kg", "kilogramos", "kilos"]:
+                            valor = str(float(valor_num))  # ya en kg
+                        elif unidad in ["g", "gramos"]:
+                            valor = str(float(valor_num) / 1000)  # g a kg
                         params[nombre] = valor
                         encontrado = True
             # Si no se encontró, intentar buscar solo el valor si hay una sola cifra en el prompt
@@ -344,14 +379,21 @@ async def chat(request: Request):
         if faltantes:
             preguntas = [p["pregunta"] for p in faltantes]
             preguntas_str = " ".join(preguntas)
-            return {"response": f"Para calcular la fórmula '{formula['nombre']}' necesito más datos: {preguntas_str}"}
+            return {"message": f"Para calcular la fórmula '{formula['nombre']}' necesito más datos: {preguntas_str}", "console_block": None}
         # Si no faltan parámetros, realizar el cálculo de IMC directamente si corresponde
         if formula_key.lower() == "imc":
             try:
                 peso = float(params_usuario.get("peso"))
                 altura = float(params_usuario.get("altura"))
                 if altura <= 0:
-                    return {"response": "La altura debe ser mayor a cero.", "type": "console"}
+                    return {
+                        "message": "Error: La altura debe ser mayor a cero.",
+                        "console_block": {
+                            "title": "Cálculo del IMC",
+                            "input": "Peso: -- kg\nAltura: -- m",
+                            "output": "FÓRMULA:\nIMC = peso / altura²\n\nSUSTITUCIÓN:\n-\n\nRESULTADO:\nError: La altura debe ser mayor a cero."
+                        }
+                    }
                 imc = round(peso / (altura ** 2), 2)
                 # Interpretación desde la tabla
                 interpretacion = ""
@@ -359,30 +401,30 @@ async def chat(request: Request):
                     if imc >= rango["min"] and imc <= rango["max"]:
                         interpretacion = rango["texto"]
                         break
-                # Mensaje técnico multilinea para console block
-                lines = [
-                    "> Cálculo del IMC",
-                    "",
-                    "DATOS DE ENTRADA:",
-                    f"Peso: {peso} kg",
-                    f"Altura: {altura} m",
-                    "",
-                    "FÓRMULA:",
-                    "IMC = peso / altura²",
-                    "",
-                    "SUSTITUCIÓN:",
-                    f"IMC = {peso} / ({altura})^2",
-                    "",
-                    "RESULTADO:",
-                    f"IMC = {imc} kg/m²",
-                    "",
-                    "INTERPRETACIÓN:",
-                    f"IMC de {imc} indica {interpretacion.lower()}, según los criterios de la OMS."
-                ]
-                # Devolver tipo 'console' para que el frontend lo renderice animado
-                return {"response": "\n".join(lines), "type": "console"}
+                output_block = (
+                    f"> Cálculo del IMC\n\n"
+                    f"DATOS DE ENTRADA:\nPeso: {peso} kg\nAltura: {altura} m\n\n"
+                    "FÓRMULA:\nIMC = peso / altura²\n\n"
+                    f"SUSTITUCIÓN:\nIMC = {peso} / ({altura})^2\n\n"
+                    f"RESULTADO:\nIMC = {imc} ({interpretacion})"
+                )
+                return {
+                    "message": "",
+                    "console_block": {
+                        "title": "Cálculo",
+                        "input": "",
+                        "output": output_block
+                    }
+                }
             except Exception as e:
-                return {"response": f"Error al calcular el IMC: {str(e)}", "type": "console"}
+                return {
+                    "message": f"Error al calcular el IMC: {str(e)}",
+                    "console_block": {
+                        "title": "Cálculo del IMC",
+                        "input": "-",
+                        "output": f"RESULTADO:\nError al calcular el IMC: {str(e)}"
+                    }
+                }
     # --- Postprocesador para saludos reflejo ---
     def es_solo_salida_reflejo(user_input: str, respuesta: str) -> bool:
         return respuesta.strip().lower() == user_input.strip().lower()
@@ -590,7 +632,7 @@ async def chat(request: Request):
     # Si se trata de cálculo de IMC y ya se devolvió el resultado, no continuar con el prompt normal
     if formula_key and formula_key.lower() == "imc" and not faltantes:
         # Ya se devolvió el resultado arriba
-        return
+        return  # return explícito para evitar continuar
     # Prompt reforzado para respuestas cerradas y profesionales
     prompt_final = f"{system_instruction}<|user|>\n{prompt}\n<|assistant|>\n"
     if not ia_engine.is_ready():
@@ -604,21 +646,17 @@ async def chat(request: Request):
             "temperature": 0.6,
             "top_p": 0.9,
         }
-        # Si el motor soporta stop tokens, pásalos aquí (simulación si no)
         stop_tokens = ["<|user|>", "<|system|>"]
-        # Llamada flexible: si ia_engine.generate acepta kwargs
         import inspect
         sig = inspect.signature(ia_engine.generate)
         if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
             response = ia_engine.generate(prompt_final, stop=stop_tokens, **gen_args)
         else:
             response = ia_engine.generate(prompt_final)
-        # --- Simular stop tokens si el modelo no los soporta ---
         for stop in stop_tokens:
             idx = response.find(stop)
             if idx != -1:
                 response = response[:idx]
-        # --- Filtrado y postprocesado ---
         import re
         import difflib
         lines = [l for l in response.splitlines() if l.strip() and not re.search(r"usuario:|assistant:|profesor|universidad|referencia|finanzas|mercado|analista|complutense|maestr[ií]a|trabajo", l, re.IGNORECASE)]
@@ -632,12 +670,9 @@ async def chat(request: Request):
                 if p_norm and difflib.SequenceMatcher(None, linea_norm, p_norm).ratio() > 0.85:
                     return True
             return False
-        # Filtrar eco y repeticiones
         clean_response = None
         for l in lines:
             l_strip = l.strip()
-            # No mostrar saludos reflejo, imitaciones, ni repeticiones del prompt
-            # Filtrar líneas que repitan instrucciones del system prompt
             instrucciones = [
                 "responde exclusivamente sobre el alimento proporcionado",
                 "no mezcles ni inventes otros",
@@ -664,19 +699,16 @@ async def chat(request: Request):
                 and l_strip.lower() != prompt.strip().lower()
                 and difflib.SequenceMatcher(None, l_strip.lower(), prompt.strip().lower()).ratio() < 0.8
                 and not any(instr in l_strip.lower() for instr in instrucciones)):
-                # Si es pregunta nutricional, filtrar frases de relleno
                 if es_nutricion and re.search(r"(es una|es un|es la|es el|sirve|utilizada|utilizado|perfecta|perfecto|acompañamiento|versátil|fresca|fresco|base sana|preparaciones|ensalada|plato principal|platos más elaborados|picada|picado|junto|otros vegetales|cruda|crudo|hamburguesas|preparaciones saladas|ingredientes para ensalada|ingrediente para ensalada|ingredientes para ensaladas|ingrediente para ensaladas)", l_strip, re.IGNORECASE):
                     continue
                 clean_response = l_strip
                 break
         if not clean_response:
             clean_response = next((l.strip() for l in lines if l.strip() and l.strip().lower() != prompt.strip().lower()), response.strip())
-        # --- Eliminar sugerencia de continuar respuesta ---
-        # Ya no se agrega ninguna frase extra si la respuesta parece inconclusa
-        # Postprocesar para evitar saludos reflejo
         clean_response = postprocesar_respuesta(prompt, clean_response)
         print(f"[LOG] /chat response: {clean_response}")
-        return {"response": clean_response}
+        # SIEMPRE devolver message y console_block (null)
+        return {"message": clean_response, "console_block": None}
     except Exception as e:
         print(f"[LOG] /chat exception: {e}")
         return JSONResponse({"error": f"Ocurrió un error al generar la respuesta: {str(e)}"}, status_code=500)

@@ -10,8 +10,11 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 export default function Chat() {
   interface Message {
     from: "ai" | "user";
-    text: string;
+    text?: string;
     type: "text" | "yaml" | "console";
+    title?: string;
+    input?: string;
+    output?: string;
   }
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -202,22 +205,29 @@ export default function Chat() {
           });
           window.clearTimeout(timeoutId);
           const data = await res.json();
-          // Siempre mostrar la respuesta completa, sin preguntar por continuar
-          let respuesta = data.response || "(Sin respuesta)";
-          // Explicar limitaciones técnicas de forma clara y útil
-          if (/no estoy capacitado para calcular/i.test(respuesta)) {
-            respuesta += "\nPuedes usar el bloque técnico para cálculos simples, o consultar fuentes confiables para resultados médicos.";
+          // Procesar bloque técnico si existe
+          let arr: Message[] = [];
+          if (data.message && data.message.trim().length > 0) {
+            const tipo = esBloqueYaml(data.message) ? "yaml" : "text";
+            arr.push({ from: "ai", text: data.message, type: tipo });
           }
-          // Evitar respuestas genéricas
-          if (/porción recomendada|consulta a un experto|aplicaciones dedicadas/i.test(respuesta)) {
-            respuesta += "\nSi necesitas datos concretos, por favor especifica cantidad, unidad y contexto.";
+          if (data.console_block && typeof data.console_block === 'object') {
+            arr.push({
+              from: "ai",
+              type: "console",
+              title: data.console_block?.title || "",
+              input: data.console_block?.input || "",
+              output: data.console_block?.output || ""
+            });
           }
-          const tipo = esBloqueYaml(respuesta) ? "yaml" : "text";
-          setMessages((msgs: Message[]) => [...msgs, { from: "ai", text: respuesta, type: tipo }]);
+          if (arr.length === 0) {
+            arr.push({ from: "ai", text: "(Sin respuesta)", type: "text" });
+          }
+          setMessages((msgs: Message[]) => [...msgs, ...arr]);
         } catch (err: any) {
           window.clearTimeout(timeoutId);
           if (err && err.name === 'AbortError') {
-          setMessages((msgs: Message[]) => [...msgs, { from: "ai", text: "El servidor está tardando demasiado en responder. Intenta de nuevo más tarde.", type: "text" }]);
+            setMessages((msgs: Message[]) => [...msgs, { from: "ai", text: "El servidor está tardando demasiado en responder. Intenta de nuevo más tarde.", type: "text" }]);
           } else {
             setMessages((msgs: Message[]) => [...msgs, { from: "ai", text: "Error de conexión con el backend.", type: "text" }]);
           }
@@ -233,7 +243,7 @@ export default function Chat() {
   return (
     <div className="flex flex-col h-screen bg-white">
       <div className="flex-1 overflow-y-auto p-6">
-        {messages.map((msg: Message, i: number) => {
+        {messages.map((msg: any, i: number) => {
           if (msg.from === "user") {
             return (
               <div
@@ -246,10 +256,14 @@ export default function Chat() {
               </div>
             );
           } else if (msg.type === "yaml") {
-            // Renderizar bloque YAML
             return <ConsoleBlockYaml key={i} input={msg.text} />;
+          } else if (msg.type === "console") {
+            return (
+              <div key={i} className="mb-4 flex justify-start">
+                <ConsoleRenderer title={msg.title} input={msg.input} output={msg.output} />
+              </div>
+            );
           } else {
-            // Renderizar bloque técnico o texto normal
             return (
               <div key={i} className="mb-4 flex justify-start">
                 <ConsoleRenderer text={msg.text} />

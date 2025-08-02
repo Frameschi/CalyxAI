@@ -1,3 +1,31 @@
+# Changelog
+
+## [1.3.4] - 2025-08-02
+### Nuevas características principales
+- **Sistema de cálculo automático de fórmulas**: Implementación completa del sistema de IMC y otras fórmulas nutricionales
+- **Consola técnica animada**: Nuevo componente `ConsoleBlock` que muestra los cálculos paso a paso con animación terminal profesional
+- **Animación terminal mejorada**: Cursor único parpadeante (█) con efecto typewriter de 50ms por carácter
+- **Conversión automática de unidades**: Sistema robusto que convierte automáticamente:
+  - Altura: 175cm → 1.75m, centímetros → metros
+  - Peso: 80000g → 80kg, gramos → kilogramos
+- **Detección inteligente de parámetros**: Regex avanzados que detectan múltiples formatos:
+  - "175cm", "1.75m", "peso: 80kg", "80 kg peso"
+  - Manejo de comas como separador decimal
+  - Tolerancia a espacios y variaciones de escritura
+
+### Mejoras técnicas
+- **TerminalTypewriter component**: Animación de terminal personalizada sin dependencias externas
+- **Regex patterns mejorados**: Patrones más robustos para detección de unidades y valores
+- **Validación de entrada**: Mejor manejo de errores en conversiones numéricas
+- **Filtrado de mensajes vacíos**: Eliminación de mensajes duplicados en el chat
+- **Optimización de animaciones**: Timing preciso para experiencia fluida
+
+### Correcciones
+- Solucionado: Múltiples cursores en animación terminal
+- Solucionado: Conversión incorrecta de 175cm mostrando 175.0m en lugar de 1.75m
+- Solucionado: Mensajes vacíos apareciendo en el chat
+- Solucionado: Animación prematura antes de completar cálculos
+
 ## [1.3.2] - 2025-07-20
 ### Cambios principales
 - El campo "id" ya no aparece en el bloque YAML ni en la tabla de información completa de alimentos.
