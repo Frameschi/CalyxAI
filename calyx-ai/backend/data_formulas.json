@@ -345,5 +345,101 @@
       { "min": 60, "max": 100, "texto": "Requerimiento proteico normal" },
       { "min": 100, "max": 200, "texto": "Requerimiento proteico alto" }
     ]
+  },
+  "composicion_corporal": {
+    "nombre": "Composición Corporal Completa",
+    "categoria": "📊 Análisis Corporal",
+    "descripcion": "Análisis completo de composición corporal que incluye: 1) Área Muscular Braquial Disponible (AMBd), 2) Masa Muscular Total (MMT), 3) Densidad Corporal (D), 4) Porcentaje de Grasa Corporal con interpretación según NIH/OMS por sexo y edad, 5) Índice de Masa Libre de Grasa (IMLG), 6) Masa Grasa en kg, 7) Masa Magra en kg, 8) Agua Corporal Total (ACT), 9) Agua Corporal Intracelular (ACI), 10) Agua Corporal Extracelular (AE), 11) Área del Brazo (AB), 12) Área Muscular del Brazo (AMB), 13) Área Grasa del Brazo (AGB), 14) Índice de Área Grasa (IAG), 15) % PCT (Porcentaje del Pliegue Cutáneo Tricipital), 16) % CMB (Porcentaje de la Circunferencia Media del Brazo). Los cálculos son secuenciales usando los resultados previos para análisis médico completo con distribución hídrica, análisis detallado del brazo y evaluación nutricional integral.",
+    "parametros": [
+      {
+        "nombre": "peso",
+        "tipo": "float",
+        "unidad": "kg",
+        "pregunta": "¿Cuál es tu peso en kg?"
+      },
+      {
+        "nombre": "altura",
+        "tipo": "float",
+        "unidad": "m",
+        "pregunta": "¿Cuál es tu altura en metros?"
+      },
+      {
+        "nombre": "edad",
+        "tipo": "int",
+        "unidad": "años",
+        "pregunta": "¿Cuántos años tienes?"
+      },
+      {
+        "nombre": "sexo",
+        "tipo": "string",
+        "opciones": ["M", "F"],
+        "pregunta": "¿Cuál es tu sexo? (M/F)"
+      },
+      {
+        "nombre": "cmb",
+        "tipo": "float",
+        "unidad": "cm",
+        "pregunta": "¿Cuál es tu circunferencia media del brazo en cm?"
+      },
+      {
+        "nombre": "pct",
+        "tipo": "float",
+        "unidad": "mm",
+        "pregunta": "¿Cuál es tu pliegue cutáneo tricipital en mm?"
+      },
+      {
+        "nombre": "pcb",
+        "tipo": "float",
+        "unidad": "mm",
+        "pregunta": "¿Cuál es tu pliegue cutáneo bicipital en mm?"
+      },
+      {
+        "nombre": "pcse",
+        "tipo": "float",
+        "unidad": "mm",
+        "pregunta": "¿Cuál es tu pliegue cutáneo subescapular en mm?"
+      },
+      {
+        "nombre": "pci",
+        "tipo": "float",
+        "unidad": "mm",
+        "pregunta": "¿Cuál es tu pliegue cutáneo ilíaco en mm?"
+      }
+    ],
+    "interpretacion": [
+      { "min": 80, "max": 100, "texto": "Área muscular normal", "parametro": "ambd" },
+      { "min": 60, "max": 79, "texto": "Deficiencia leve", "parametro": "ambd" },
+      { "min": 40, "max": 59, "texto": "Deficiencia moderada", "parametro": "ambd" },
+      { "min": 0, "max": 39, "texto": "Deficiencia severa", "parametro": "ambd" },
+      { "min": 25, "max": 50, "texto": "Masa muscular total normal", "parametro": "mmt" },
+      { "min": 20, "max": 24, "texto": "Masa muscular baja", "parametro": "mmt" },
+      { "min": 0, "max": 19, "texto": "Masa muscular muy baja", "parametro": "mmt" },
+      { "min": 1.050, "max": 1.100, "texto": "Densidad corporal normal", "parametro": "densidad" },
+      { "min": 1.030, "max": 1.049, "texto": "Densidad corporal baja", "parametro": "densidad" },
+      { "min": 1.000, "max": 1.029, "texto": "Densidad corporal muy baja", "parametro": "densidad" },
+      { "min": 0, "max": 15, "texto": "Grasa corporal baja (NIH/OMS)", "parametro": "grasa", "sexo": "M" },
+      { "min": 16, "max": 25, "texto": "Grasa corporal normal (NIH/OMS)", "parametro": "grasa", "sexo": "M" },
+      { "min": 26, "max": 100, "texto": "Grasa corporal alta (NIH/OMS)", "parametro": "grasa", "sexo": "M" },
+      { "min": 0, "max": 25, "texto": "Grasa corporal baja (NIH/OMS)", "parametro": "grasa", "sexo": "F" },
+      { "min": 26, "max": 35, "texto": "Grasa corporal normal (NIH/OMS)", "parametro": "grasa", "sexo": "F" },
+      { "min": 36, "max": 100, "texto": "Grasa corporal alta (NIH/OMS)", "parametro": "grasa", "sexo": "F" },
+      { "min": 0, "max": 16, "texto": "IMLG desgastado/bajo", "parametro": "imlg", "sexo": "M" },
+      { "min": 17, "max": 100, "texto": "IMLG normal", "parametro": "imlg", "sexo": "M" },
+      { "min": 0, "max": 14, "texto": "IMLG desgastado/bajo", "parametro": "imlg", "sexo": "F" },
+      { "min": 15, "max": 100, "texto": "IMLG normal", "parametro": "imlg", "sexo": "F" },
+      { "min": 0, "max": 4, "texto": "Desgastado", "parametro": "iag" },
+      { "min": 5, "max": 14, "texto": "Debajo del promedio", "parametro": "iag" },
+      { "min": 15, "max": 85, "texto": "Promedio", "parametro": "iag" },
+      { "min": 86, "max": 95, "texto": "Arriba del promedio", "parametro": "iag" },
+      { "min": 96, "max": 100, "texto": "Exceso de grasa", "parametro": "iag" },
+      { "min": 100, "max": 200, "texto": "Normal", "parametro": "pct_porcentaje" },
+      { "min": 65, "max": 99, "texto": "Desnutrición leve", "parametro": "pct_porcentaje" },
+      { "min": 40, "max": 64, "texto": "Desnutrición moderada", "parametro": "pct_porcentaje" },
+      { "min": 0, "max": 39, "texto": "Desnutrición severa", "parametro": "pct_porcentaje" },
+      { "min": 90, "max": 200, "texto": "Normal", "parametro": "cmb_porcentaje" },
+      { "min": 85, "max": 89, "texto": "Desnutrición leve", "parametro": "cmb_porcentaje" },
+      { "min": 75, "max": 84, "texto": "Desnutrición moderada", "parametro": "cmb_porcentaje" },
+      { "min": 0, "max": 74, "texto": "Desnutrición severa", "parametro": "cmb_porcentaje" }
+    ]
   }
 }

@@ -217,6 +217,12 @@ async def chat(request: Request):
     data = await request.json()
     print(f"[LOG] /chat received data: {data}")
     prompt = data.get("prompt", "").strip()
+    
+    # DEBUG CRÍTICO: Mostrar exactamente qué está recibiendo el servidor
+    print(f"[DEBUG CRÍTICO] Prompt recibido ({len(prompt)} caracteres):")
+    print(f"[DEBUG CRÍTICO] Contenido completo: {repr(prompt)}")
+    print(f"[DEBUG CRÍTICO] Primeros 500 chars: {prompt[:500]}")
+    
     if not prompt:
         print("[LOG] /chat error: No prompt provided")
         return JSONResponse({"error": "No prompt provided"}, status_code=400)
@@ -230,157 +236,298 @@ async def chat(request: Request):
 
     def detectar_formula_en_prompt(prompt, formulas):
         prompt_l = prompt.lower()
+        
+        print(f"[DEBUG] detectar_formula_en_prompt llamado con prompt de {len(prompt)} caracteres")
+        print(f"[DEBUG] Primeros 300 chars: {prompt_l[:300]}")
+        
+        # NUEVO: Detectar si estamos en una conversación de composición corporal
+        # analizando todo el historial de la conversación
+        condiciones_cc = [
+            "composicion corporal" in prompt_l,
+            "composición corporal" in prompt_l,
+            "análisis corporal" in prompt_l,
+            "¿cuál es tu peso en kg?" in prompt_l,
+            "¿cuál es tu altura en metros?" in prompt_l,
+            "¿cuántos años tienes?" in prompt_l,
+            "¿cuál es tu sexo?" in prompt_l,
+            "circunferencia media del brazo" in prompt_l,
+            "pliegue cutáneo" in prompt_l
+        ]
+        
+        print(f"[DEBUG] Condiciones composición corporal: {condiciones_cc}")
+        print(f"[DEBUG] Alguna condición cumplida: {any(condiciones_cc)}")
+        
+        if any(condiciones_cc):
+            print(f"[DEBUG] ✓ Detectada composición corporal")
+            return "composicion_corporal", formulas.get("composicion_corporal")
+        
+        # Mapeo de términos comunes a claves de fórmulas
+        mapeo_terminos = {
+            "composicion corporal": "composicion_corporal",
+            "composición corporal": "composicion_corporal", 
+            "analisis corporal": "composicion_corporal",
+            "análisis corporal": "composicion_corporal",
+            "grasa corporal": "composicion_corporal",
+            "masa corporal": "composicion_corporal",
+            "densidad corporal": "composicion_corporal",
+            "indice de masa corporal": "imc",
+            "índice de masa corporal": "imc"
+        }
+        
+        # Buscar por términos mapeados primero
+        for termino, clave in mapeo_terminos.items():
+            if termino in prompt_l and clave in formulas:
+                return clave, formulas[clave]
+        
+        # Buscar por nombre exacto o clave
         for key, formula in formulas.items():
             # Buscar por nombre exacto o alias
             nombre = formula.get("nombre", "").lower()
             if nombre and nombre in prompt_l:
+                print(f"[DEBUG] ✓ Detectada fórmula por nombre: {key}")
                 return key, formula
             # Buscar por clave interna
             if key in prompt_l:
+                print(f"[DEBUG] ✓ Detectada fórmula por clave: {key}")
                 return key, formula
+        
+        print(f"[DEBUG] ✗ No se detectó ninguna fórmula")
         return None, None
 
     def extraer_parametros_usuario(prompt, formula):
         params = {}
         texto = prompt.lower()
-        # Extraer todos los números y palabras clave relevantes
-        for param in formula.get("parametros", []):
-            nombre = param["nombre"].lower()
-            # Variantes y unidades comunes
-            variantes = [nombre]
-            if nombre == "peso":
-                variantes += ["peso corporal", "pesa", "kg", "kilogramos", "kilos", "peso en kg", "peso en kilos"]
-            if nombre == "altura":
-                variantes += ["estatura", "mide", "altura corporal", "cm", "metros", "mt", "mts", "talla", "mido", "altura en cm", "altura en metros"]
-            if nombre == "edad":
-                variantes += ["años", "edad actual"]
-            if nombre == "sexo":
-                variantes += ["género", "masculino", "femenino", "hombre", "mujer"]
-            encontrado = False
-            # Buscar expresiones tipo "var: valor unidad", "valor unidad var", "var=valor unidad", "valorunidadvar"
-            for var in variantes:
-                # Ejemplo: "peso: 80kg", "80 kg peso", "peso=80 kilos", "80kg de peso"
-                patron1 = rf"{var}\s*[:=]?\s*([\d\.,]+)\s*(kg|kilogramos|kilos|g|gramos|cm|centimetros|mts|mt|m|metros)?"
-                patron2 = rf"([\d\.,]+)\s*(kg|kilogramos|kilos|g|gramos|cm|centimetros|mts|mt|m|metros)?\s*{var}"
-                patron3 = rf"{var}\s*[:=]?\s*([MFmf])"
-                
-                # También buscar patrones pegados como "175cm", "80kg"
-                patron_pegado = rf"(\d{{1,3}}(?:[\.,]\d+)?)\s*(cm|centimetros|kg|kilogramos|kilos|m|metros|mt|mts)"
-                
-                m1 = re.search(patron1, texto, re.IGNORECASE)
-                m2 = re.search(patron2, texto, re.IGNORECASE)
-                m3 = re.search(patron3, texto, re.IGNORECASE)
-                m_pegado = re.search(patron_pegado, texto, re.IGNORECASE)
-                
-                if m1:
-                    valor = m1.group(1).replace(",", ".")
-                    unidad = m1.group(2)
-                    # Normalizar unidades para altura
-                    if nombre == "altura":
-                        if unidad and unidad.lower() in ["cm", "centimetros"]:
-                            valor = str(float(valor) / 100)  # cm a metros
-                        elif unidad and unidad.lower() in ["m", "metros", "mt", "mts"]:
-                            valor = str(float(valor))  # ya en metros
-                    # Normalizar unidades para peso
-                    if nombre == "peso":
-                        if unidad and unidad.lower() in ["kg", "kilogramos", "kilos"]:
-                            valor = str(float(valor))  # ya en kg
-                        elif unidad and unidad.lower() in ["g", "gramos"]:
-                            valor = str(float(valor) / 1000)  # g a kg
-                    params[nombre] = valor
-                    encontrado = True
+        
+        # CRÍTICO: Buscar en TODO el texto de la conversación
+        # El prompt contiene TODA la conversación, no solo el último mensaje
+        
+        # Buscar TODOS los valores numéricos mencionados junto con unidades o contexto
+        print(f"[DEBUG] Analizando texto completo de {len(texto)} caracteres")
+        
+        # 1. Peso (kg) - buscar TODOS los valores de peso mencionados
+        patrones_peso = [
+            r'(\d{1,3}(?:[\.,]\d+)?)\s*(?:kg|kilogramos?|kilos?)',
+            r'peso.*?(\d{1,3}(?:[\.,]\d+)?)',
+            r'¿cuál es tu peso.*?(\d{1,3}(?:[\.,]\d+)?)'
+        ]
+        
+        for patron in patrones_peso:
+            matches = re.findall(patron, texto, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                valor = float(match.replace(",", "."))
+                if 30 <= valor <= 200:  # Rango válido para peso
+                    params["peso"] = str(valor)
+                    print(f"[DEBUG] Peso encontrado: {valor}")
                     break
-                elif m2:
-                    valor = m2.group(1).replace(",", ".")
-                    unidad = m2.group(2)
-                    if nombre == "altura":
-                        if unidad and unidad.lower() in ["cm", "centimetros"]:
-                            valor = str(float(valor) / 100)
-                        elif unidad and unidad.lower() in ["m", "metros", "mt", "mts"]:
-                            valor = str(float(valor))
-                    if nombre == "peso":
-                        if unidad and unidad.lower() in ["kg", "kilogramos", "kilos"]:
-                            valor = str(float(valor))
-                        elif unidad and unidad.lower() in ["g", "gramos"]:
-                            valor = str(float(valor) / 1000)
-                    params[nombre] = valor
-                    encontrado = True
+            if "peso" in params:
+                break
+        
+        # 2. Altura (metros o cm) - buscar TODOS los valores de altura mencionados
+        patrones_altura = [
+            r'(\d{1,2}[\.,]\d{1,2})\s*(?:m|metros?)',
+            r'(\d{2,3})\s*(?:cm|centimetros?|centímetros?)',
+            r'altura.*?(\d{1,2}[\.,]\d{1,2})',
+            r'¿cuál es tu altura.*?(\d{1,2}[\.,]\d{1,2})',
+            r'¿cuál es tu altura.*?(\d{2,3})'
+        ]
+        
+        for patron in patrones_altura:
+            matches = re.findall(patron, texto, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                valor = float(match.replace(",", "."))
+                if 1.0 <= valor <= 2.5:  # Metros
+                    params["altura"] = str(valor)
+                    print(f"[DEBUG] Altura encontrada en metros: {valor}")
                     break
-                elif m3:
-                    valor = m3.group(1)
-                    params[nombre] = valor
-                    encontrado = True
+                elif 140 <= valor <= 220:  # Centímetros
+                    params["altura"] = str(valor / 100)
+                    print(f"[DEBUG] Altura encontrada en cm: {valor} -> {valor/100}m")
                     break
-                elif m_pegado and not encontrado:
-                    valor_num = m_pegado.group(1).replace(",", ".")
-                    unidad_detectada = m_pegado.group(2).lower()
-                    
-                    # Solo procesar si coincide con el parámetro que buscamos
-                    if nombre == "altura" and unidad_detectada in ["cm", "centimetros", "m", "metros", "mt", "mts"]:
-                        if unidad_detectada in ["cm", "centimetros"]:
-                            valor = str(float(valor_num) / 100)  # cm a metros
-                        else:
-                            valor = str(float(valor_num))  # ya en metros
-                        params[nombre] = valor
-                        encontrado = True
+            if "altura" in params:
+                break
+        
+        # 3. Edad (años) - buscar TODOS los valores de edad mencionados
+        patrones_edad = [
+            r'(\d{1,3})\s*años?',
+            r'edad.*?(\d{1,3})',
+            r'¿cuántos años.*?(\d{1,3})',
+            r'tienes.*?(\d{1,3})'
+        ]
+        
+        for patron in patrones_edad:
+            matches = re.findall(patron, texto, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                valor = int(match)
+                if 10 <= valor <= 120:  # Rango válido para edad
+                    params["edad"] = str(valor)
+                    print(f"[DEBUG] Edad encontrada: {valor}")
+                    break
+            if "edad" in params:
+                break
+        
+        # 4. Sexo (M/F) - buscar TODOS los valores de sexo mencionados
+        patrones_sexo = [
+            r'\b([MFmf])\b',
+            r'sexo.*?([MFmf])',
+            r'masculino|femenino|hombre|mujer'
+        ]
+        
+        for patron in patrones_sexo:
+            matches = re.findall(patron, texto, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                if isinstance(match, str) and len(match) == 1:
+                    params["sexo"] = match.upper()
+                    print(f"[DEBUG] Sexo encontrado: {match.upper()}")
+                    break
+                elif "masculino" in match.lower() or "hombre" in match.lower():
+                    params["sexo"] = "M"
+                    print(f"[DEBUG] Sexo encontrado: M")
+                    break
+                elif "femenino" in match.lower() or "mujer" in match.lower():
+                    params["sexo"] = "F"
+                    print(f"[DEBUG] Sexo encontrado: F")
+                    break
+            if "sexo" in params:
+                break
+        
+        # 5. Circunferencia media del brazo (cm)
+        patrones_cmb = [
+            r'(\d{1,3}(?:[\.,]\d+)?)\s*cm.*?brazo',
+            r'brazo.*?(\d{1,3}(?:[\.,]\d+)?)\s*cm',
+            r'circunferencia.*?brazo.*?(\d{1,3}(?:[\.,]\d+)?)',
+            r'cmb.*?(\d{1,3}(?:[\.,]\d+)?)'
+        ]
+        
+        for patron in patrones_cmb:
+            matches = re.findall(patron, texto, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                valor = float(match.replace(",", "."))
+                if 15 <= valor <= 50:  # Rango válido para CMB
+                    params["cmb"] = str(valor)
+                    print(f"[DEBUG] CMB encontrado: {valor}")
+                    break
+            if "cmb" in params:
+                break
+        
+        # 6. Pliegues cutáneos (mm)
+        pliegues_patrones = {
+            "pct": [r'tricipital.*?(\d{1,2}(?:[\.,]\d+)?)', r'pct.*?(\d{1,2}(?:[\.,]\d+)?)'],
+            "pcb": [r'bicipital.*?(\d{1,2}(?:[\.,]\d+)?)', r'pcb.*?(\d{1,2}(?:[\.,]\d+)?)'],
+            "pcse": [r'subescapular.*?(\d{1,2}(?:[\.,]\d+)?)', r'pcse.*?(\d{1,2}(?:[\.,]\d+)?)'],
+            "pci": [r'ilíaco.*?(\d{1,2}(?:[\.,]\d+)?)', r'iliaco.*?(\d{1,2}(?:[\.,]\d+)?)', r'pci.*?(\d{1,2}(?:[\.,]\d+)?)']
+        }
+        
+        for pliegue, patrones in pliegues_patrones.items():
+            for patron in patrones:
+                matches = re.findall(patron, texto, re.IGNORECASE | re.DOTALL)
+                for match in matches:
+                    valor = float(match.replace(",", "."))
+                    if 3 <= valor <= 50:  # Rango válido para pliegues
+                        params[pliegue] = str(valor)
+                        print(f"[DEBUG] {pliegue.upper()} encontrado: {valor}")
                         break
-                    elif nombre == "peso" and unidad_detectada in ["kg", "kilogramos", "kilos"]:
-                        valor = str(float(valor_num))  # ya en kg
-                        params[nombre] = valor
-                        encontrado = True
+                if pliegue in params:
+                    break
+        
+        # FALLBACK: Si no se encontraron valores específicos, buscar números sueltos
+        if len(params) == 0:
+            print(f"[DEBUG] No se encontraron parámetros específicos, usando fallback")
+            # Solo buscar números cerca de preguntas específicas
+            lineas = texto.split('\n')
+            for i, linea in enumerate(lineas):
+                linea = linea.strip().lower()
+                if "peso" in linea and i + 1 < len(lineas):
+                    siguiente = lineas[i + 1].strip()
+                    numeros = re.findall(r'(\d{1,3}(?:[\.,]\d+)?)', siguiente)
+                    for num in numeros:
+                        valor = float(num.replace(",", "."))
+                        if 30 <= valor <= 200:
+                            params["peso"] = str(valor)
+                            break
+                
+                elif "altura" in linea and i + 1 < len(lineas):
+                    siguiente = lineas[i + 1].strip()
+                    numeros = re.findall(r'(\d{1,3}(?:[\.,]\d+)?)', siguiente)
+                    for num in numeros:
+                        valor = float(num.replace(",", "."))
+                        if 1.0 <= valor <= 2.5:
+                            params["altura"] = str(valor)
+                            break
+                        elif 140 <= valor <= 220:
+                            params["altura"] = str(valor / 100)
+                            break
+                
+                elif "años" in linea and i + 1 < len(lineas):
+                    siguiente = lineas[i + 1].strip()
+                    numeros = re.findall(r'(\d{1,3})', siguiente)
+                    for num in numeros:
+                        valor = int(num)
+                        if 10 <= valor <= 120:
+                            params["edad"] = str(valor)
+                            break
+                
+                elif "sexo" in linea and i + 1 < len(lineas):
+                    siguiente = lineas[i + 1].strip()
+                    match = re.search(r'\b([MFmf])\b', siguiente)
+                    if match:
+                        params["sexo"] = match.group(1).upper()
                         break
-            # Si no se encontró, buscar expresiones pegadas tipo "175cm", "80kg" con mayor precisión
-            if not encontrado:
-                if nombre == "altura":
-                    # Buscar altura con unidades más completas
-                    patron_altura = r"(\d{1,3}(?:[\.,]\d+)?)\s*(cm|centimetros|centímetros|m|metros|mt|mts)(?:\s|$|[^\w])"
-                    match = re.search(patron_altura, texto, re.IGNORECASE)
-                    if match:
-                        valor_num = match.group(1).replace(",", ".")
-                        unidad = match.group(2).lower()
-                        if unidad in ["cm", "centimetros", "centímetros"]:
-                            valor = str(float(valor_num) / 100)  # cm a metros
-                        else:
-                            valor = str(float(valor_num))  # ya en metros
-                        params[nombre] = valor
-                        encontrado = True
-                elif nombre == "peso":
-                    # Buscar peso con unidades más completas
-                    patron_peso = r"(\d{1,3}(?:[\.,]\d+)?)\s*(kg|kilogramos|kilos|g|gramos)(?:\s|$|[^\w])"
-                    match = re.search(patron_peso, texto, re.IGNORECASE)
-                    if match:
-                        valor_num = match.group(1).replace(",", ".")
-                        unidad = match.group(2).lower()
-                        if unidad in ["kg", "kilogramos", "kilos"]:
-                            valor = str(float(valor_num))  # ya en kg
-                        elif unidad in ["g", "gramos"]:
-                            valor = str(float(valor_num) / 1000)  # g a kg
-                        params[nombre] = valor
-                        encontrado = True
-            # Si no se encontró, intentar buscar solo el valor si hay una sola cifra en el prompt
-            if not encontrado:
-                # Si solo hay un parámetro faltante y una cifra en el texto, asumir que corresponde
-                if len(formula.get("parametros", [])) == 1:
-                    m = re.search(r"([\d\.,]+|[MFmf])", texto)
-                    if m:
-                        valor = m.group(1).replace(",", ".")
-                        params[nombre] = valor
+        
+        print(f"[DEBUG] Parámetros finales extraídos: {params}")
         return params
 
     formula_key, formula = detectar_formula_en_prompt(prompt, formulas)
+    
+    # DEBUG CRÍTICO: Mostrar resultado de detección de fórmula
+    print(f"[DEBUG CRÍTICO] Resultado detección fórmula:")
+    print(f"[DEBUG CRÍTICO] - formula_key: {formula_key}")
+    print(f"[DEBUG CRÍTICO] - formula encontrada: {formula is not None}")
+    
     if formula:
-        # Extraer parámetros presentes en el prompt
+        # CRÍTICO: Extraer parámetros de TODA la conversación, no solo el último mensaje
+        # Esto evita preguntar la misma información múltiples veces
+        # Analizar TODO el prompt que puede contener múltiples intercambios
         params_usuario = extraer_parametros_usuario(prompt, formula)
+        
+        # DEBUG: Log para verificar qué parámetros se están extrayendo
+        print(f"[DEBUG] Parámetros extraídos: {params_usuario}")
+        print(f"[DEBUG] Prompt completo analizado: {prompt[:200]}...")
+        
         # Detectar parámetros faltantes
         faltantes = []
         for param in formula["parametros"]:
             if param["nombre"] not in params_usuario:
                 faltantes.append(param)
+        
+        print(f"[DEBUG] Parámetros faltantes: {[p['nombre'] for p in faltantes]}")
+        
         if faltantes:
-            preguntas = [p["pregunta"] for p in faltantes]
-            preguntas_str = " ".join(preguntas)
-            return {"message": f"Para calcular la fórmula '{formula['nombre']}' necesito más datos: {preguntas_str}", "console_block": None}
-        # Si no faltan parámetros, realizar el cálculo de IMC directamente si corresponde
+            # Sistema de preguntas progresivas - una pregunta a la vez
+            primer_faltante = faltantes[0]
+            pregunta_individual = primer_faltante["pregunta"]
+            
+            # Hacer la pregunta más amigable según el parámetro
+            if primer_faltante["nombre"] == "peso":
+                pregunta_individual = "¿Cuál es tu peso en kg?"
+            elif primer_faltante["nombre"] == "altura":
+                pregunta_individual = "¿Cuál es tu altura en metros? (ejemplo: 1.75)"
+            elif primer_faltante["nombre"] == "edad":
+                pregunta_individual = "¿Cuántos años tienes?"
+            elif primer_faltante["nombre"] == "sexo":
+                pregunta_individual = "¿Cuál es tu sexo? (M para masculino, F para femenino)"
+            elif primer_faltante["nombre"] == "cmb":
+                pregunta_individual = "¿Cuál es tu circunferencia media del brazo en cm? (medida alrededor del punto medio del brazo)"
+            elif primer_faltante["nombre"] == "pct":
+                pregunta_individual = "¿Cuál es tu pliegue cutáneo tricipital en mm? (pellizco en la parte posterior del brazo)"
+            elif primer_faltante["nombre"] == "pcb":
+                pregunta_individual = "¿Cuál es tu pliegue cutáneo bicipital en mm? (pellizco en la parte frontal del brazo)"
+            elif primer_faltante["nombre"] == "pcse":
+                pregunta_individual = "¿Cuál es tu pliegue cutáneo subescapular en mm? (pellizco debajo del omóplato)"
+            elif primer_faltante["nombre"] == "pci":
+                pregunta_individual = "¿Cuál es tu pliegue cutáneo ilíaco en mm? (pellizco en la cresta ilíaca/cadera)"
+            
+            return {"message": pregunta_individual, "console_block": None}
+        # Si no faltan parámetros, realizar el cálculo según la fórmula
         if formula_key.lower() == "imc":
             try:
                 peso = float(params_usuario.get("peso"))
@@ -425,6 +572,489 @@ async def chat(request: Request):
                         "output": f"RESULTADO:\nError al calcular el IMC: {str(e)}"
                     }
                 }
+        elif formula_key.lower() == "composicion_corporal":
+            try:
+                peso = float(params_usuario.get("peso"))
+                altura = float(params_usuario.get("altura"))
+                edad = int(params_usuario.get("edad"))
+                sexo = params_usuario.get("sexo", "").upper()
+                cmb = float(params_usuario.get("cmb"))  # Circunferencia Media del Brazo (cm)
+                pct_mm = float(params_usuario.get("pct"))  # Pliegue Cutáneo Tricipital (mm)
+                pcb_mm = float(params_usuario.get("pcb"))  # Pliegue Cutáneo Bicipital (mm)
+                pcse_mm = float(params_usuario.get("pcse"))  # Pliegue Cutáneo Subescapular (mm)
+                pci_mm = float(params_usuario.get("pci"))  # Pliegue Cutáneo Ilíaco (mm)
+                
+                if altura <= 0 or cmb <= 0 or pct_mm <= 0 or pcb_mm <= 0 or pcse_mm <= 0 or pci_mm <= 0:
+                    return {
+                        "message": "Error: Todos los valores deben ser mayores a cero.",
+                        "console_block": {
+                            "title": "Composición Corporal",
+                            "input": "Error en los datos",
+                            "output": "RESULTADO:\nError: Todos los valores deben ser mayores a cero."
+                        }
+                    }
+                
+                import math
+                
+                # 1. ÁREA MUSCULAR BRAQUIAL DISPONIBLE (AMBd)
+                # Convertir PCT de mm a cm para la fórmula
+                pct_cm = pct_mm / 10
+                
+                # Fórmula: AMBd = [CMB - (π × PCT cm)]² / (4 × π) - constante
+                # Constante: -10 para hombres, -6.5 para mujeres
+                constante = -10 if sexo == "M" else -6.5
+                
+                # Calcular área muscular braquial
+                numerador = (cmb - (math.pi * pct_cm)) ** 2
+                denominador = 4 * math.pi
+                ambd = round((numerador / denominador) + constante, 2)
+                
+                # Interpretación del AMBd (como porcentaje de referencia)
+                # Para simplicidad, asumiremos valores de referencia estándar
+                # TODO: Implementar tabla de referencia real según sexo y edad
+                ambd_referencia = 50 if sexo == "M" else 35  # Valores aproximados de referencia
+                porcentaje_ambd = round((ambd / ambd_referencia) * 100, 1)
+                
+                interpretacion_ambd = ""
+                for rango in formula.get("interpretacion", []):
+                    if rango.get("parametro") == "ambd" and porcentaje_ambd >= rango["min"] and porcentaje_ambd <= rango["max"]:
+                        interpretacion_ambd = rango["texto"]
+                        break
+                
+                if not interpretacion_ambd:
+                    if porcentaje_ambd >= 80:
+                        interpretacion_ambd = "Área muscular normal"
+                    elif porcentaje_ambd >= 60:
+                        interpretacion_ambd = "Deficiencia leve"
+                    elif porcentaje_ambd >= 40:
+                        interpretacion_ambd = "Deficiencia moderada"
+                    else:
+                        interpretacion_ambd = "Deficiencia severa"
+                
+                # 2. MASA MUSCULAR TOTAL (MMT)
+                # Fórmula: MMT = Talla (cm) × [(0.0264) + (0.0029 × AMBd)]
+                # Convertir altura de metros a centímetros
+                altura_cm = altura * 100
+                
+                # Calcular masa muscular total
+                factor_1 = 0.0264
+                factor_2 = 0.0029 * ambd
+                mmt = round(altura_cm * (factor_1 + factor_2), 2)
+                
+                # Interpretación de la masa muscular total
+                interpretacion_mmt = ""
+                for rango in formula.get("interpretacion", []):
+                    if rango.get("parametro") == "mmt" and mmt >= rango["min"] and mmt <= rango["max"]:
+                        interpretacion_mmt = rango["texto"]
+                        break
+                
+                if not interpretacion_mmt:
+                    if mmt >= 25:
+                        interpretacion_mmt = "Masa muscular total normal"
+                    elif mmt >= 20:
+                        interpretacion_mmt = "Masa muscular baja"
+                    else:
+                        interpretacion_mmt = "Masa muscular muy baja"
+                
+                # 3. DENSIDAD CORPORAL (D)
+                # Fórmula: D = c - [m × logaritmo de suma de pliegues]
+                # Suma de los 4 pliegues cutáneos
+                suma_pliegues = pct_mm + pcb_mm + pcse_mm + pci_mm
+                
+                # Constantes según sexo (valores estándar de Durnin-Womersley)
+                if sexo == "M":  # Hombres
+                    c = 1.1765
+                    m = 0.0744
+                else:  # Mujeres
+                    c = 1.1567
+                    m = 0.0717
+                
+                # Calcular densidad corporal
+                import math
+                densidad = round(c - (m * math.log10(suma_pliegues)), 4)
+                
+                # Interpretación de la densidad corporal
+                interpretacion_densidad = ""
+                for rango in formula.get("interpretacion", []):
+                    if rango.get("parametro") == "densidad" and densidad >= rango["min"] and densidad <= rango["max"]:
+                        interpretacion_densidad = rango["texto"]
+                        break
+                
+                if not interpretacion_densidad:
+                    if densidad >= 1.050:
+                        interpretacion_densidad = "Densidad corporal normal"
+                    elif densidad >= 1.030:
+                        interpretacion_densidad = "Densidad corporal baja"
+                    else:
+                        interpretacion_densidad = "Densidad corporal muy baja"
+                
+                # 4. PORCENTAJE DE GRASA CORPORAL
+                # Fórmula: % Grasa = (4.95/Densidad - 4.5) × 100
+                porcentaje_grasa = round((4.95/densidad - 4.5) * 100, 1)
+                
+                # Interpretación del porcentaje de grasa según sexo y edad (NIH/OMS)
+                interpretacion_grasa = ""
+                
+                if sexo == "M":  # Hombre
+                    if 20 <= edad <= 39:
+                        if porcentaje_grasa < 8:
+                            interpretacion_grasa = "Bajo/Magro"
+                        elif 8 <= porcentaje_grasa <= 19.9:
+                            interpretacion_grasa = "Normal/Saludable"
+                        elif 20 <= porcentaje_grasa <= 24.9:
+                            interpretacion_grasa = "Alto/Sobrepeso"
+                        else:
+                            interpretacion_grasa = "Muy Alto/Obesidad"
+                    elif 40 <= edad <= 59:
+                        if porcentaje_grasa < 11:
+                            interpretacion_grasa = "Bajo/Magro"
+                        elif 11 <= porcentaje_grasa <= 21.9:
+                            interpretacion_grasa = "Normal/Saludable"
+                        elif 22 <= porcentaje_grasa <= 27.9:
+                            interpretacion_grasa = "Alto/Sobrepeso"
+                        else:
+                            interpretacion_grasa = "Muy Alto/Obesidad"
+                    elif 60 <= edad <= 79:
+                        if porcentaje_grasa < 13:
+                            interpretacion_grasa = "Bajo/Magro"
+                        elif 13 <= porcentaje_grasa <= 24.9:
+                            interpretacion_grasa = "Normal/Saludable"
+                        elif 25 <= porcentaje_grasa <= 29.9:
+                            interpretacion_grasa = "Alto/Sobrepeso"
+                        else:
+                            interpretacion_grasa = "Muy Alto/Obesidad"
+                else:  # Mujer
+                    if 20 <= edad <= 39:
+                        if porcentaje_grasa < 21:
+                            interpretacion_grasa = "Bajo/Magro"
+                        elif 21 <= porcentaje_grasa <= 32.9:
+                            interpretacion_grasa = "Normal/Saludable"
+                        elif 33 <= porcentaje_grasa <= 38.9:
+                            interpretacion_grasa = "Alto/Sobrepeso"
+                        else:
+                            interpretacion_grasa = "Muy Alto/Obesidad"
+                    elif 40 <= edad <= 59:
+                        if porcentaje_grasa < 23:
+                            interpretacion_grasa = "Bajo/Magro"
+                        elif 23 <= porcentaje_grasa <= 33.9:
+                            interpretacion_grasa = "Normal/Saludable"
+                        elif 34 <= porcentaje_grasa <= 39.9:
+                            interpretacion_grasa = "Alto/Sobrepeso"
+                        else:
+                            interpretacion_grasa = "Muy Alto/Obesidad"
+                    elif 60 <= edad <= 79:
+                        if porcentaje_grasa < 24:
+                            interpretacion_grasa = "Bajo/Magro"
+                        elif 24 <= porcentaje_grasa <= 35.9:
+                            interpretacion_grasa = "Normal/Saludable"
+                        elif 36 <= porcentaje_grasa <= 41.9:
+                            interpretacion_grasa = "Alto/Sobrepeso"
+                        else:
+                            interpretacion_grasa = "Muy Alto/Obesidad"
+                
+                # Si la edad está fuera de los rangos, usar interpretación general
+                if not interpretacion_grasa:
+                    if sexo == "M":
+                        if porcentaje_grasa <= 15:
+                            interpretacion_grasa = "Bajo (atlético)"
+                        elif porcentaje_grasa <= 25:
+                            interpretacion_grasa = "Normal"
+                        else:
+                            interpretacion_grasa = "Alto"
+                    else:
+                        if porcentaje_grasa <= 25:
+                            interpretacion_grasa = "Bajo (atlético)"
+                        elif porcentaje_grasa <= 35:
+                            interpretacion_grasa = "Normal"
+                        else:
+                            interpretacion_grasa = "Alto"
+                
+                # 5. ÍNDICE DE MASA LIBRE DE GRASA (IMLG)
+                # Paso 1: Convertir % de grasa a kg de grasa
+                kg_grasa = round((porcentaje_grasa / 100) * peso, 2)
+                
+                # Paso 2: Calcular masa libre de grasa (peso total - kg de grasa)
+                masa_libre_grasa = round(peso - kg_grasa, 2)
+                
+                # Paso 3: Calcular índice de masa libre de grasa (MLG / Talla²)
+                imlg = round(masa_libre_grasa / (altura ** 2), 2)
+                
+                # Interpretación del IMLG según sexo
+                interpretacion_imlg = ""
+                if sexo == "M":  # Hombres
+                    if imlg < 17:
+                        interpretacion_imlg = "Desgastado/Bajo"
+                    else:
+                        interpretacion_imlg = "Normal"
+                else:  # Mujeres
+                    if imlg < 15:
+                        interpretacion_imlg = "Desgastado/Bajo"
+                    else:
+                        interpretacion_imlg = "Normal"
+                
+                # 6. MASA GRASA (kg)
+                # Fórmula: MG = (Peso × % de grasa) / 100
+                masa_grasa_kg = round((peso * porcentaje_grasa) / 100, 2)
+                
+                # 7. MASA MAGRA (kg)
+                # Fórmula: MM = Peso - Masa Grasa
+                masa_magra_kg = round(peso - masa_grasa_kg, 2)
+                
+                # 8. AGUA CORPORAL TOTAL (ACT)
+                # Fórmulas específicas por sexo
+                if sexo == "M":  # Hombres
+                    act = round(((peso * 69.81) - (0.26 * peso) - (0.12 * edad)) / 100, 2)
+                else:  # Mujeres
+                    act = round(((peso * 79.45) - (0.24 * peso) - (0.15 * edad)) / 100, 2)
+                
+                # 9. AGUA CORPORAL INTRACELULAR (ACI)
+                # Fórmulas específicas por sexo usando ACT
+                if sexo == "M":  # Hombres
+                    porcentaje_aci = (52.3 - (0.07 * edad)) / 100
+                    aci = round(porcentaje_aci * act, 2)
+                else:  # Mujeres
+                    porcentaje_aci = (62.3 - (0.16 * edad)) / 100
+                    aci = round(porcentaje_aci * act, 2)
+                
+                # 10. AGUA CORPORAL EXTRACELULAR (AE)
+                # Fórmula: AE = ACT - ACI
+                ae = round(act - aci, 2)
+                
+                # 11. ÁREA DEL BRAZO (AB)
+                # Fórmula: AB = (CMB)² / 12.5664
+                area_brazo = round((cmb ** 2) / 12.5664, 2)
+                
+                # 12. ÁREA MUSCULAR DEL BRAZO (AMB)
+                # Fórmula: AMB = ((CMB) - (3.1416 × PCT en cm))² / 12.5664
+                # Nota: PCT ya está convertido a cm en pct_cm
+                area_muscular_brazo = round(((cmb - (3.1416 * pct_cm)) ** 2) / 12.5664, 2)
+                
+                # 13. ÁREA GRASA DEL BRAZO (AGB)
+                # Fórmula: AGB = AB - AMB
+                area_grasa_brazo = round(area_brazo - area_muscular_brazo, 2)
+                
+                # 14. ÍNDICE DE ÁREA GRASA (IAG)
+                # Fórmula: IAG = (AGB / AB) × 100
+                iag = round((area_grasa_brazo / area_brazo) * 100, 2)
+                
+                # Interpretación del IAG según percentiles
+                if iag < 5:
+                    interpretacion_iag = "Desgastado"
+                elif 5 <= iag < 15:
+                    interpretacion_iag = "Debajo del promedio"
+                elif 15 <= iag <= 85:
+                    interpretacion_iag = "Promedio"
+                elif 85 < iag <= 95:
+                    interpretacion_iag = "Arriba del promedio"
+                else:  # >95
+                    interpretacion_iag = "Exceso de grasa"
+                
+                # 15. % PCT (Porcentaje del Pliegue Cutáneo Tricipital)
+                # Valores de referencia según sexo
+                if sexo == "M":  # Hombres
+                    pct_referencia = 12.5  # mm
+                else:  # Mujeres
+                    pct_referencia = 16.5  # mm
+                
+                # Fórmula: % PCT = (PCT actual / PCT referencia) × 100
+                porcentaje_pct = round((pct_mm / pct_referencia) * 100, 1)
+                
+                # Interpretación del % PCT según tabla
+                if porcentaje_pct >= 100:
+                    interpretacion_pct = "Normal"
+                elif porcentaje_pct >= 65:
+                    interpretacion_pct = "Desnutrición leve"
+                elif porcentaje_pct >= 40:
+                    interpretacion_pct = "Desnutrición moderada"
+                else:  # <40%
+                    interpretacion_pct = "Desnutrición severa"
+                
+                # 16. % CMB (Porcentaje de la Circunferencia Media del Brazo)
+                # Valores de referencia según sexo
+                if sexo == "M":  # Hombres
+                    cmb_referencia = 25.3  # cm
+                else:  # Mujeres
+                    cmb_referencia = 23.2  # cm
+                
+                # Fórmula: % CMB = (CMB actual / CMB referencia) × 100
+                porcentaje_cmb = round((cmb / cmb_referencia) * 100, 1)
+                
+                # Interpretación del % CMB según tabla
+                if porcentaje_cmb >= 90:
+                    interpretacion_cmb = "Normal"
+                elif porcentaje_cmb >= 85:
+                    interpretacion_cmb = "Desnutrición leve"
+                elif porcentaje_cmb >= 75:
+                    interpretacion_cmb = "Desnutrición moderada"
+                else:  # <75%
+                    interpretacion_cmb = "Desnutrición severa"
+                
+                # Cálculo básico del IMC para contexto
+                imc = round(peso / (altura ** 2), 2)
+                interpretacion_imc = ""
+                for rango in formulas["imc"].get("interpretacion", []):
+                    if imc >= rango["min"] and imc <= rango["max"]:
+                        interpretacion_imc = rango["texto"]
+                        break
+                
+                output_block = (
+                    f"> Análisis de Composición Corporal\n\n"
+                    f"DATOS DE ENTRADA:\n"
+                    f"• Peso: {peso} kg\n"
+                    f"• Altura: {altura} m ({altura_cm} cm)\n"
+                    f"• Edad: {edad} años\n"
+                    f"• Sexo: {sexo}\n"
+                    f"• CMB: {cmb} cm\n"
+                    f"• PCT: {pct_mm} mm ({pct_cm} cm)\n"
+                    f"• PCB: {pcb_mm} mm\n"
+                    f"• PCSE: {pcse_mm} mm\n"
+                    f"• PCI: {pci_mm} mm\n"
+                    f"• Suma de pliegues: {suma_pliegues} mm\n\n"
+                    f"CÁLCULO 1 - ÁREA MUSCULAR BRAQUIAL DISPONIBLE:\n"
+                    f"AMBd = [CMB - (π × PCT)]² / (4π) + constante\n"
+                    f"AMBd = [{cmb} - (π × {pct_cm})]² / (4π) + {constante}\n"
+                    f"AMBd = {ambd} cm²\n\n"
+                    f"CÁLCULO 2 - MASA MUSCULAR TOTAL:\n"
+                    f"MMT = Talla (cm) × [(0.0264) + (0.0029 × AMBd)]\n"
+                    f"MMT = {altura_cm} × [(0.0264) + (0.0029 × {ambd})]\n"
+                    f"MMT = {altura_cm} × [{factor_1} + {factor_2:.4f}]\n"
+                    f"MMT = {altura_cm} × {factor_1 + factor_2:.4f}\n"
+                    f"MMT = {mmt} kg\n\n"
+                    f"CÁLCULO 3 - DENSIDAD CORPORAL:\n"
+                    f"D = c - [m × log₁₀(suma de pliegues)]\n"
+                    f"D = {c} - [{m} × log₁₀({suma_pliegues})]\n"
+                    f"D = {c} - [{m} × {math.log10(suma_pliegues):.4f}]\n"
+                    f"D = {densidad} g/cm³\n\n"
+                    f"CÁLCULO 4 - PORCENTAJE DE GRASA:\n"
+                    f"% Grasa = (4.95/Densidad - 4.5) × 100\n"
+                    f"% Grasa = (4.95/{densidad} - 4.5) × 100\n"
+                    f"% Grasa = ({4.95/densidad:.4f} - 4.5) × 100\n"
+                    f"% Grasa = {porcentaje_grasa}%\n\n"
+                    f"INTERPRETACIÓN DE % GRASA (NIH/OMS):\n"
+                    f"Sexo: {sexo} | Edad: {edad} años\n"
+                    f"Porcentaje de grasa: {porcentaje_grasa}% → {interpretacion_grasa}\n\n"
+                    f"CÁLCULO 5 - ÍNDICE DE MASA LIBRE DE GRASA:\n"
+                    f"Paso 1: Kg de grasa = ({porcentaje_grasa}% / 100) × {peso} kg = {kg_grasa} kg\n"
+                    f"Paso 2: Masa libre de grasa = {peso} kg - {kg_grasa} kg = {masa_libre_grasa} kg\n"
+                    f"Paso 3: IMLG = MLG / Talla² = {masa_libre_grasa} / ({altura})² = {imlg} kg/m²\n\n"
+                    f"CÁLCULO 6 - MASA GRASA (kg):\n"
+                    f"MG = (Peso × % de grasa) / 100\n"
+                    f"MG = ({peso} × {porcentaje_grasa}) / 100\n"
+                    f"MG = {masa_grasa_kg} kg\n\n"
+                    f"CÁLCULO 7 - MASA MAGRA (kg):\n"
+                    f"MM = Peso - Masa Grasa\n"
+                    f"MM = {peso} - {masa_grasa_kg}\n"
+                    f"MM = {masa_magra_kg} kg\n\n"
+                    f"CÁLCULO 8 - AGUA CORPORAL TOTAL (ACT):\n"
+                    f"Fórmula ({sexo}): ACT = (peso × {'69.81' if sexo == 'M' else '79.45'}) - ({'0.26' if sexo == 'M' else '0.24'} × peso) - ({'0.12' if sexo == 'M' else '0.15'} × edad) / 100\n"
+                    f"ACT = ({peso} × {'69.81' if sexo == 'M' else '79.45'}) - ({'0.26' if sexo == 'M' else '0.24'} × {peso}) - ({'0.12' if sexo == 'M' else '0.15'} × {edad}) / 100\n"
+                    f"ACT = {act} litros\n\n"
+                    f"CÁLCULO 9 - AGUA CORPORAL INTRACELULAR (ACI):\n"
+                    f"Fórmula ({sexo}): ACI = [({'52.3' if sexo == 'M' else '62.3'} - ({'0.07' if sexo == 'M' else '0.16'} × edad)) / 100] × ACT\n"
+                    f"ACI = [({'52.3' if sexo == 'M' else '62.3'} - ({'0.07' if sexo == 'M' else '0.16'} × {edad})) / 100] × {act}\n"
+                    f"ACI = [{porcentaje_aci:.3f}] × {act} = {aci} litros\n\n"
+                    f"CÁLCULO 10 - AGUA CORPORAL EXTRACELULAR (AE):\n"
+                    f"AE = ACT - ACI\n"
+                    f"AE = {act} - {aci}\n"
+                    f"AE = {ae} litros\n\n"
+                    f"CÁLCULO 11 - ÁREA DEL BRAZO (AB):\n"
+                    f"AB = (CMB)² / 12.5664\n"
+                    f"AB = ({cmb})² / 12.5664\n"
+                    f"AB = {area_brazo} cm²\n\n"
+                    f"CÁLCULO 12 - ÁREA MUSCULAR DEL BRAZO (AMB):\n"
+                    f"AMB = ((CMB) - (3.1416 × PCT en cm))² / 12.5664\n"
+                    f"AMB = (({cmb}) - (3.1416 × {pct_cm}))² / 12.5664\n"
+                    f"AMB = ({cmb - (3.1416 * pct_cm):.4f})² / 12.5664\n"
+                    f"AMB = {area_muscular_brazo} cm²\n\n"
+                    f"CÁLCULO 13 - ÁREA GRASA DEL BRAZO (AGB):\n"
+                    f"AGB = AB - AMB\n"
+                    f"AGB = {area_brazo} - {area_muscular_brazo}\n"
+                    f"AGB = {area_grasa_brazo} cm²\n\n"
+                    f"CÁLCULO 14 - ÍNDICE DE ÁREA GRASA (IAG):\n"
+                    f"IAG = (AGB / AB) × 100\n"
+                    f"IAG = ({area_grasa_brazo} / {area_brazo}) × 100\n"
+                    f"IAG = {iag}%\n\n"
+                    f"CÁLCULO 15 - % PCT (PORCENTAJE PLIEGUE CUTÁNEO TRICIPITAL):\n"
+                    f"Valor de referencia ({sexo}): {pct_referencia} mm\n"
+                    f"% PCT = (PCT actual / PCT referencia) × 100\n"
+                    f"% PCT = ({pct_mm} / {pct_referencia}) × 100\n"
+                    f"% PCT = {porcentaje_pct}%\n\n"
+                    f"CÁLCULO 16 - % CMB (PORCENTAJE CIRCUNFERENCIA MEDIA DEL BRAZO):\n"
+                    f"Valor de referencia ({sexo}): {cmb_referencia} cm\n"
+                    f"% CMB = (CMB actual / CMB referencia) × 100\n"
+                    f"% CMB = ({cmb} / {cmb_referencia}) × 100\n"
+                    f"% CMB = {porcentaje_cmb}%\n\n"
+                    f"RESULTADOS:\n"
+                    f"┌─ IMC: {imc} kg/m² ({interpretacion_imc})\n"
+                    f"├─ Área Muscular Braquial: {ambd} cm²\n"
+                    f"├─ Porcentaje AMBd: {porcentaje_ambd}%\n"
+                    f"├─ Estado muscular: {interpretacion_ambd}\n"
+                    f"├─ Masa Muscular Total: {mmt} kg\n"
+                    f"├─ Densidad Corporal: {densidad} g/cm³\n"
+                    f"├─ Porcentaje de Grasa: {porcentaje_grasa}% ({interpretacion_grasa})\n"
+                    f"├─ Masa Grasa: {masa_grasa_kg} kg\n"
+                    f"├─ Masa Magra: {masa_magra_kg} kg\n"
+                    f"├─ Masa Libre de Grasa: {masa_libre_grasa} kg\n"
+                    f"├─ Índice MLG: {imlg} kg/m² ({interpretacion_imlg})\n"
+                    f"├─ Agua Corporal Total: {act} L\n"
+                    f"├─ Agua Intracelular: {aci} L\n"
+                    f"├─ Agua Extracelular: {ae} L\n"
+                    f"├─ Área del Brazo: {area_brazo} cm²\n"
+                    f"├─ Área Muscular del Brazo: {area_muscular_brazo} cm²\n"
+                    f"├─ Área Grasa del Brazo: {area_grasa_brazo} cm²\n"
+                    f"├─ Índice de Área Grasa: {iag}% ({interpretacion_iag})\n"
+                    f"├─ % PCT: {porcentaje_pct}% ({interpretacion_pct})\n"
+                    f"└─ % CMB: {porcentaje_cmb}% ({interpretacion_cmb})\n\n"
+                    f"INTERPRETACIÓN CLÍNICA:\n"
+                    f"• Estado nutricional: {interpretacion_imc}\n"
+                    f"• Estado muscular del brazo: {interpretacion_ambd}\n"
+                    f"• Área muscular disponible: {ambd} cm² ({porcentaje_ambd}% de referencia)\n"
+                    f"• Masa muscular corporal total: {mmt} kg ({interpretacion_mmt})\n"
+                    f"• Densidad corporal: {densidad} g/cm³ ({interpretacion_densidad})\n"
+                    f"• Grasa corporal según NIH/OMS: {porcentaje_grasa}% ({interpretacion_grasa})\n"
+                    f"• Masa grasa corporal: {masa_grasa_kg} kg\n"
+                    f"• Masa magra corporal: {masa_magra_kg} kg\n"
+                    f"• Índice de masa libre de grasa: {imlg} kg/m² ({interpretacion_imlg})\n"
+                    f"• Agua corporal total: {act} L ({round((act/peso)*100, 1)}% del peso corporal)\n"
+                    f"• Agua intracelular: {aci} L ({round((aci/act)*100, 1)}% del ACT)\n"
+                    f"• Agua extracelular: {ae} L ({round((ae/act)*100, 1)}% del ACT)\n"
+                    f"• Análisis del brazo: Área total {area_brazo} cm², músculo {area_muscular_brazo} cm², grasa {area_grasa_brazo} cm²\n"
+                    f"• Índice de área grasa del brazo: {iag}% ({interpretacion_iag})\n"
+                    f"• Evaluación nutricional por PCT: {porcentaje_pct}% del valor de referencia ({interpretacion_pct})\n"
+                    f"• Evaluación nutricional por CMB: {porcentaje_cmb}% del valor de referencia ({interpretacion_cmb})"
+                )
+                
+                return {
+                    "message": "",
+                    "console_block": {
+                        "title": "Composición Corporal",
+                        "input": "",
+                        "output": output_block
+                    }
+                }
+            except Exception as e:
+                return {
+                    "message": f"Error al calcular la composición corporal: {str(e)}",
+                    "console_block": {
+                        "title": "Composición Corporal",
+                        "input": "-",
+                        "output": f"RESULTADO:\nError al calcular: {str(e)}"
+                    }
+                }
+    
+    # Detectar si se está pidiendo un cálculo que no conocemos
+    terminos_calculo = [
+        "calcular", "calculo", "cálculo", "formula", "fórmula", 
+        "densidad corporal", "masa grasa", "masa magra", "porcentaje grasa",
+        "tasa metabolica", "gasto energetico", "requerimiento", "tmb", "get"
+    ]
+    es_solicitud_calculo = any(termino in prompt.lower() for termino in terminos_calculo)
+    
+    if es_solicitud_calculo and not formula_key:
+        return {
+            "message": "Lo siento, no tengo información específica sobre ese cálculo en mi base de datos de fórmulas. Puedo ayudarte con: IMC, composición corporal completa, TMB (Harris-Benedict), agua corporal, y requerimiento de proteína. ¿Te interesa alguno de estos?",
+            "console_block": None
+        }
     # --- Postprocesador para saludos reflejo ---
     def es_solo_salida_reflejo(user_input: str, respuesta: str) -> bool:
         return respuesta.strip().lower() == user_input.strip().lower()
@@ -451,6 +1081,26 @@ async def chat(request: Request):
     def postprocesar_respuesta(user_input: str, respuesta: str) -> str:
         if es_solo_salida_reflejo(user_input, respuesta) and respuesta_es_solo_saludo(user_input):
             return respuesta_para_saludo(user_input)
+        
+        # Evitar que repita instrucciones del sistema
+        instrucciones_sistema = [
+            "responde exclusivamente sobre el alimento proporcionado",
+            "no mezcles ni inventes otros",
+            "evita responder con historias personales", 
+            "responde siempre en español",
+            "de forma breve, clara y profesional",
+            "si no sabes algo con certeza",
+            "admite tu límite con honestidad",
+            "nunca repitas literalmente el mensaje del usuario",
+            "calyx ai",
+            "asistente inteligente",
+            "especializado en nutrición"
+        ]
+        
+        respuesta_lower = respuesta.lower()
+        if any(instr in respuesta_lower for instr in instrucciones_sistema):
+            return "Lo siento, no tengo información específica sobre eso en este momento. ¿Hay algo más en lo que pueda ayudarte?"
+        
         return respuesta
     print("[LOG] /chat endpoint called")
     data = await request.json()
@@ -717,3 +1367,10 @@ async def chat(request: Request):
 @app.get("/")
 def root():
     return {"message": "Calyx AI backend activo (Phi-3 Mini-4K-Instruct)"}
+
+if __name__ == "__main__":
+    import uvicorn
+    print("Iniciando servidor Calyx AI...")
+    print("Servidor disponible en: http://localhost:8000")
+    print("Documentación API en: http://localhost:8000/docs")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
