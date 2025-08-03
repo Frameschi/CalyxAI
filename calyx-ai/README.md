@@ -8,9 +8,12 @@ Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, p
 
 ## Características
 - Chat con IA local (modelo Phi-3 Mini 4K Instruct, 4-bit, GPU)
-- **Cálculos automáticos de fórmulas nutricionales** (IMC, TMB, etc.)
+- **Cálculos automáticos de fórmulas nutricionales** (IMC, Composición Corporal, TMB, etc.)
+- **Separación inteligente de fórmulas médicas** - No interfieren entre sí
+- **Recolección progresiva de parámetros** - Conversaciones naturales para obtener datos
 - **Consola técnica animada** para mostrar procesos de cálculo paso a paso
 - **Conversión automática de unidades** (175cm ↔ 1.75m, kg ↔ g)
+- **Contexto adaptativo** - Mantiene historial extendido para fórmulas médicas complejas
 - Búsqueda flexible de alimentos y datos nutricionales desde base SQLite
 - Interfaz moderna y responsiva (Electron, React, Tailwind)
 - Funciona como app de escritorio y web
@@ -22,6 +25,8 @@ Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, p
 ## Logros actuales
 - Backend FastAPI modularizado, con IA y base de datos integrados
 - **Sistema de fórmulas automático** con detección inteligente de parámetros
+- **Separación perfecta entre fórmulas** - IMC y Composición Corporal independientes
+- **Contexto inteligente** - 20 mensajes para fórmulas médicas, 6 para chat general
 - **Animación terminal profesional** con cursor único y efecto typewriter
 - **Conversión de unidades robusta** para altura (cm/m) y peso (kg/g)
 - Carga y uso de modelo Phi-3 Mini en GPU y 4-bit (bitsandbytes)
@@ -31,7 +36,7 @@ Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, p
 - Pruebas exitosas de comunicación y generación de respuestas
 
 ---
-Desarrollado por Frameschi. Versión 1.3.4
+Desarrollado por Frameschi. Versión 1.4.0
 
 ## Notas de versión
 Consulta los cambios recientes en [CHANGELOG.md](./CHANGELOG.md)

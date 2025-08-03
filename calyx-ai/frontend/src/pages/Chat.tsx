@@ -191,24 +191,29 @@ export default function Chat() {
 
       // Si no es pregunta de alimento, usar IA general
       try {
-        // CORREGIDO: Mantener contexto completo para fórmulas médicas
-        // El backend necesita toda la conversación para detectar parámetros ya proporcionados
-        let promptFinal: string;
+        // CRÍTICO: Mantener contexto más amplio para fórmulas médicas
+        // Las fórmulas médicas pueden requerir muchos intercambios (hasta 18 mensajes para composición corporal)
         
-        // Si hay mensajes previos, construir la conversación completa
-        if (messages.length > 0) {
-          // Crear conversación completa manteniendo el formato original
-          const conversacionCompleta = messages.map((m: Message) => {
-            // Solo usar el texto, sin prefijos "ai:" o "user:"
-            return m.text || "";
-          }).filter(text => text.trim().length > 0).join('\n\n');
-          
-          // Agregar el nuevo mensaje del usuario
-          promptFinal = `${conversacionCompleta}\n\n${userMsg}`;
-        } else {
-          // Primer mensaje
-          promptFinal = userMsg;
-        }
+        // Detectar si estamos en una conversación de fórmula médica
+        const esFamilaMedica = messages.some(m => 
+          m.text && (
+            m.text.toLowerCase().includes('imc') ||
+            m.text.toLowerCase().includes('composicion corporal') ||
+            m.text.toLowerCase().includes('composición corporal') ||
+            m.text.toLowerCase().includes('peso en kg') ||
+            m.text.toLowerCase().includes('altura en metros') ||
+            m.text.toLowerCase().includes('años tienes') ||
+            m.text.toLowerCase().includes('pliegue cutáneo') ||
+            m.text.toLowerCase().includes('circunferencia')
+          )
+        );
+        
+        // Usar contexto extendido para fórmulas médicas, normal para otras consultas
+        const cantidadContexto = esFamilaMedica ? 20 : 6;
+        const contexto = messages.slice(-cantidadContexto).map((m: Message) => `${m.from}: ${m.text}`).join('\n');
+        const promptFinal = `${contexto}\nuser: ${userMsg}`;
+        
+        console.log(`[DEBUG Frontend] Es fórmula médica: ${esFamilaMedica}, Contexto: ${cantidadContexto} mensajes`);
         
         const controller = window.AbortController ? new window.AbortController() : new AbortController();
         const timeoutId = window.setTimeout(() => controller.abort(), 60000);

@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.4.0] - 2025-08-03
+### 🎯 Correcciones críticas de separación de fórmulas médicas
+- **SOLUCIONADO: Problema de reutilización de parámetros entre fórmulas**: Ahora el sistema distingue correctamente entre nuevas solicitudes de fórmulas y recolección progresiva de parámetros
+- **SOLUCIONADO: Error "user: 65" al responder preguntas**: El frontend ahora mantiene contexto extendido (20 mensajes) para fórmulas médicas en lugar de 6 mensajes
+- **Separación inteligente de contexto**: 
+  - Nueva solicitud de fórmula (ej: "composición corporal") → Limpia parámetros anteriores
+  - Respuesta simple (ej: "65", "M", "25") → Continúa recolección progresiva
+- **Detección mejorada de fórmulas en progreso**: Reconoce preguntas específicas como "pliegue cutáneo", "circunferencia del brazo" para mantener contexto de composición corporal
+
+### 🔧 Mejoras técnicas
+- **Lógica de detección de nueva solicitud**: Diferencia entre palabras clave de fórmulas y respuestas numéricas/de texto
+- **Contexto adaptativo en frontend**: Automáticamente extiende el contexto cuando detecta conversaciones de fórmulas médicas
+- **Logging mejorado**: Mejor trazabilidad del proceso de detección de fórmulas y extracción de parámetros
+- **Tests automatizados**: Nuevos tests para verificar separación de fórmulas y recolección progresiva
+
+### 🏥 Experiencia de usuario
+- **Flujo natural entre fórmulas**: Ahora puedes calcular IMC y luego solicitar composición corporal sin interferencias
+- **Recolección progresiva confiable**: Las respuestas a preguntas de parámetros se acumulan correctamente
+- **Eliminación de preguntas repetitivas**: No volverá a preguntar por peso/altura cuando cambies de IMC a composición corporal
+
+### ⚡ Rendimiento
+- **Contexto optimizado**: Solo usa contexto extendido cuando es necesario (fórmulas médicas)
+- **Detección más rápida**: Algoritmo mejorado para identificar tipo de mensaje (nueva fórmula vs respuesta)
+
 ## [1.3.4] - 2025-08-02
 ### Nuevas características principales
 - **Sistema de cálculo automático de fórmulas**: Implementación completa del sistema de IMC y otras fórmulas nutricionales

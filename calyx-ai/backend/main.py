@@ -217,12 +217,6 @@ async def chat(request: Request):
     data = await request.json()
     print(f"[LOG] /chat received data: {data}")
     prompt = data.get("prompt", "").strip()
-    
-    # DEBUG CRÍTICO: Mostrar exactamente qué está recibiendo el servidor
-    print(f"[DEBUG CRÍTICO] Prompt recibido ({len(prompt)} caracteres):")
-    print(f"[DEBUG CRÍTICO] Contenido completo: {repr(prompt)}")
-    print(f"[DEBUG CRÍTICO] Primeros 500 chars: {prompt[:500]}")
-    
     if not prompt:
         print("[LOG] /chat error: No prompt provided")
         return JSONResponse({"error": "No prompt provided"}, status_code=400)
@@ -237,44 +231,81 @@ async def chat(request: Request):
     def detectar_formula_en_prompt(prompt, formulas):
         prompt_l = prompt.lower()
         
-        print(f"[DEBUG] detectar_formula_en_prompt llamado con prompt de {len(prompt)} caracteres")
-        print(f"[DEBUG] Primeros 300 chars: {prompt_l[:300]}")
+        # CRÍTICO: Detectar el último mensaje del usuario para nueva solicitud
+        # Si hay múltiples líneas, tomar la última solicitud como la intención principal
+        lineas = prompt.strip().split('\n')
+        ultimo_mensaje = ""
         
-        # NUEVO: Detectar si estamos en una conversación de composición corporal
-        # analizando todo el historial de la conversación
-        condiciones_cc = [
-            "composicion corporal" in prompt_l,
-            "composición corporal" in prompt_l,
-            "análisis corporal" in prompt_l,
-            "¿cuál es tu peso en kg?" in prompt_l,
-            "¿cuál es tu altura en metros?" in prompt_l,
-            "¿cuántos años tienes?" in prompt_l,
-            "¿cuál es tu sexo?" in prompt_l,
-            "circunferencia media del brazo" in prompt_l,
-            "pliegue cutáneo" in prompt_l
+        # Buscar el último mensaje del usuario (no ai:)
+        for linea in reversed(lineas):
+            if linea.strip() and not linea.strip().startswith('ai:'):
+                ultimo_mensaje = linea.strip().lower()
+                if ultimo_mensaje.startswith('user:'):
+                    ultimo_mensaje = ultimo_mensaje[5:].strip()
+                break
+        
+        print(f"[DEBUG] Último mensaje detectado: '{ultimo_mensaje}'")
+        
+        # Si hay un mensaje específico reciente, usarlo para detectar la nueva fórmula
+        if ultimo_mensaje:
+            # PRIMERA PRIORIDAD: Detectar nueva solicitud de composición corporal
+            if ("composicion corporal" in ultimo_mensaje or 
+                "composición corporal" in ultimo_mensaje or
+                "analisis corporal" in ultimo_mensaje or
+                "análisis corporal" in ultimo_mensaje):
+                print(f"[DEBUG] Nueva solicitud de composición corporal detectada")
+                return "composicion_corporal", formulas.get("composicion_corporal")
+            
+            # SEGUNDA PRIORIDAD: Detectar nueva solicitud de IMC
+            solicitudes_imc = [
+                "calcular imc", "calcula imc", "imc", "indice de masa corporal", 
+                "índice de masa corporal", "calcular mi imc", "calcula mi imc"
+            ]
+            
+            for solicitud in solicitudes_imc:
+                if solicitud in ultimo_mensaje:
+                    print(f"[DEBUG] Nueva solicitud de IMC detectada")
+                    return "imc", formulas.get("imc")
+        
+        # FALLBACK: Analizar todo el prompt para detectar fórmula en progreso
+        # IMPORTANTE: Priorizar composición corporal si hay múltiples parámetros específicos
+        
+        # Detectar composición corporal por preguntas específicas en el prompt
+        preguntas_composicion = [
+            "circunferencia media del brazo", "pliegue cutáneo", "tricipital", 
+            "bicipital", "subescapular", "ilíaco", "cmb", "pct", "pcb", "pcse", "pci"
         ]
         
-        print(f"[DEBUG] Condiciones composición corporal: {condiciones_cc}")
-        print(f"[DEBUG] Alguna condición cumplida: {any(condiciones_cc)}")
+        hay_preguntas_composicion = any(pregunta in prompt_l for pregunta in preguntas_composicion)
         
-        if any(condiciones_cc):
-            print(f"[DEBUG] ✓ Detectada composición corporal")
+        if (hay_preguntas_composicion or 
+            "composicion corporal" in prompt_l or 
+            "composición corporal" in prompt_l):
+            print(f"[DEBUG] Composición corporal detectada en progreso")
             return "composicion_corporal", formulas.get("composicion_corporal")
         
-        # Mapeo de términos comunes a claves de fórmulas
+        # Detectar IMC por contexto
+        if any(solicitud in prompt_l for solicitud in [
+            "calcular imc", "calcula imc", "imc", "indice de masa corporal", 
+            "índice de masa corporal", "calcular mi imc", "calcula mi imc"
+        ]):
+            print(f"[DEBUG] IMC detectado en progreso")
+            return "imc", formulas.get("imc")
+        
+        # Buscar por términos mapeados como último recurso
         mapeo_terminos = {
+            "imc": "imc",
+            "indice de masa corporal": "imc",
+            "índice de masa corporal": "imc",
             "composicion corporal": "composicion_corporal",
             "composición corporal": "composicion_corporal", 
             "analisis corporal": "composicion_corporal",
             "análisis corporal": "composicion_corporal",
             "grasa corporal": "composicion_corporal",
             "masa corporal": "composicion_corporal",
-            "densidad corporal": "composicion_corporal",
-            "indice de masa corporal": "imc",
-            "índice de masa corporal": "imc"
+            "densidad corporal": "composicion_corporal"
         }
         
-        # Buscar por términos mapeados primero
         for termino, clave in mapeo_terminos.items():
             if termino in prompt_l and clave in formulas:
                 return clave, formulas[clave]
@@ -284,25 +315,34 @@ async def chat(request: Request):
             # Buscar por nombre exacto o alias
             nombre = formula.get("nombre", "").lower()
             if nombre and nombre in prompt_l:
-                print(f"[DEBUG] ✓ Detectada fórmula por nombre: {key}")
                 return key, formula
             # Buscar por clave interna
             if key in prompt_l:
-                print(f"[DEBUG] ✓ Detectada fórmula por clave: {key}")
                 return key, formula
-        
-        print(f"[DEBUG] ✗ No se detectó ninguna fórmula")
         return None, None
 
-    def extraer_parametros_usuario(prompt, formula):
+    def extraer_parametros_usuario(prompt, formula, es_nueva_solicitud=False):
         params = {}
         texto = prompt.lower()
+        
+        # CRÍTICO: Si es una nueva solicitud de fórmula, solo buscar parámetros 
+        # en el contexto reciente, no en toda la conversación histórica
+        if es_nueva_solicitud:
+            print(f"[DEBUG] Nueva solicitud detectada - limitando búsqueda a contexto reciente")
+            # Solo buscar en las últimas 3 líneas de la conversación
+            lineas = prompt.strip().split('\n')
+            contexto_reciente = lineas[-3:] if len(lineas) > 3 else lineas
+            texto = '\n'.join(contexto_reciente).lower()
+            print(f"[DEBUG] Contexto reciente: {texto}")
+        else:
+            # Buscar en TODA la conversación para recolección progresiva de parámetros
+            print(f"[DEBUG] Recolección progresiva - analizando toda la conversación")
         
         # CRÍTICO: Buscar en TODO el texto de la conversación
         # El prompt contiene TODA la conversación, no solo el último mensaje
         
         # Buscar TODOS los valores numéricos mencionados junto con unidades o contexto
-        print(f"[DEBUG] Analizando texto completo de {len(texto)} caracteres")
+        print(f"[DEBUG] Analizando texto de {len(texto)} caracteres")
         
         # 1. Peso (kg) - buscar TODOS los valores de peso mencionados
         patrones_peso = [
@@ -477,21 +517,52 @@ async def chat(request: Request):
         return params
 
     formula_key, formula = detectar_formula_en_prompt(prompt, formulas)
-    
-    # DEBUG CRÍTICO: Mostrar resultado de detección de fórmula
-    print(f"[DEBUG CRÍTICO] Resultado detección fórmula:")
-    print(f"[DEBUG CRÍTICO] - formula_key: {formula_key}")
-    print(f"[DEBUG CRÍTICO] - formula encontrada: {formula is not None}")
-    
     if formula:
-        # CRÍTICO: Extraer parámetros de TODA la conversación, no solo el último mensaje
-        # Esto evita preguntar la misma información múltiples veces
-        # Analizar TODO el prompt que puede contener múltiples intercambios
-        params_usuario = extraer_parametros_usuario(prompt, formula)
+        # CRÍTICO: Detectar si es una nueva solicitud de fórmula
+        # Si el último mensaje del usuario contiene una nueva solicitud, limpiar contexto
+        lineas = prompt.strip().split('\n')
+        ultimo_mensaje = ""
+        
+        # Buscar el último mensaje del usuario
+        for linea in reversed(lineas):
+            if linea.strip() and not linea.strip().startswith('ai:'):
+                ultimo_mensaje = linea.strip().lower()
+                if ultimo_mensaje.startswith('user:'):
+                    ultimo_mensaje = ultimo_mensaje[5:].strip()
+                break
+        
+        # Determinar si es una nueva solicitud de fórmula
+        es_nueva_solicitud = False
+        if ultimo_mensaje:
+            # SOLO considerar nueva solicitud si es una palabra clave específica de fórmula
+            # NO si es un número o respuesta a pregunta
+            
+            # Primero verificar si es solo un número o respuesta simple
+            es_respuesta_numero = re.match(r'^\s*\d+(\.\d+)?\s*$', ultimo_mensaje.strip())
+            es_respuesta_sexo = re.match(r'^\s*[mf]\s*$', ultimo_mensaje.strip(), re.IGNORECASE)
+            es_respuesta_simple = es_respuesta_numero or es_respuesta_sexo
+            
+            if not es_respuesta_simple:
+                # Solo entonces verificar si es nueva solicitud de fórmula
+                nuevas_solicitudes = [
+                    "composicion corporal", "composición corporal", "analisis corporal", 
+                    "análisis corporal", "calcular imc", "calcula imc", "imc"
+                ]
+                for solicitud in nuevas_solicitudes:
+                    if solicitud in ultimo_mensaje:
+                        es_nueva_solicitud = True
+                        print(f"[DEBUG] Nueva solicitud detectada: {solicitud}")
+                        break
+        
+        # CRÍTICO: Extraer parámetros considerando si es nueva solicitud
+        # Si es nueva solicitud, solo buscar en contexto reciente
+        # Si no, buscar en toda la conversación para recolección progresiva
+        params_usuario = extraer_parametros_usuario(prompt, formula, es_nueva_solicitud)
         
         # DEBUG: Log para verificar qué parámetros se están extrayendo
         print(f"[DEBUG] Parámetros extraídos: {params_usuario}")
-        print(f"[DEBUG] Prompt completo analizado: {prompt[:200]}...")
+        print(f"[DEBUG] Es nueva solicitud: {es_nueva_solicitud}")
+        print(f"[DEBUG] Fórmula detectada: {formula_key}")
         
         # Detectar parámetros faltantes
         faltantes = []
@@ -1367,10 +1438,3 @@ async def chat(request: Request):
 @app.get("/")
 def root():
     return {"message": "Calyx AI backend activo (Phi-3 Mini-4K-Instruct)"}
-
-if __name__ == "__main__":
-    import uvicorn
-    print("Iniciando servidor Calyx AI...")
-    print("Servidor disponible en: http://localhost:8000")
-    print("Documentación API en: http://localhost:8000/docs")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
