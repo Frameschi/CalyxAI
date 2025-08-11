@@ -4,6 +4,9 @@ import { Send } from "lucide-react";
 import { ConsoleRenderer } from "../components/ConsoleRenderer";
 import { ConsoleBlockYaml } from "../components/ConsoleBlockYaml";
 import { esBloqueYaml } from "../utils/formatConsole";
+import { Sidebar } from "../components/Sidebar";
+import { MenuButton } from "../components/MenuButton";
+import { SettingsPage } from "./Settings";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -20,6 +23,8 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto scroll cuando se agregan mensajes
@@ -267,8 +272,36 @@ export default function Chat() {
     }
   };
 
+  const handleNewChat = () => {
+    setMessages([]);
+    setSidebarOpen(false);
+  };
+
+  const handleOpenSettings = () => {
+    setCurrentView('settings');
+    setSidebarOpen(false);
+  };
+
+  const handleBackToChat = () => {
+    setCurrentView('chat');
+  };
+
+  // Si estamos en configuraciones, mostrar esa página
+  if (currentView === 'settings') {
+    return <SettingsPage onBack={handleBackToChat} />;
+  }
+
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex flex-col h-screen bg-white dark:bg-gray-900 transition-colors">
+      <MenuButton onClick={() => setSidebarOpen(true)} />
+      
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onNewChat={handleNewChat}
+        onOpenSettings={handleOpenSettings}
+      />
+      
       <div className="flex-1 overflow-y-auto p-6">
         {messages.map((msg: any, i: number) => {
           if (msg.from === "user") {
@@ -277,7 +310,7 @@ export default function Chat() {
                 key={i}
                 className="mb-4 flex justify-end"
               >
-                <div className="bg-gray-100 text-gray-900 px-4 py-2 rounded-2xl max-w-lg shadow border border-gray-300">
+                <div className="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white px-4 py-2 rounded-2xl max-w-lg shadow border border-gray-300 dark:border-gray-600 transition-colors">
                   {msg.text}
                 </div>
               </div>
@@ -301,10 +334,10 @@ export default function Chat() {
         <div ref={messagesEndRef} />
       </div>
       <div className="p-6 bg-transparent">
-        <div className="flex items-center border border-black rounded-2xl px-4 py-2 shadow-md bg-white">
+        <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-2xl px-4 py-2 shadow-md bg-white dark:bg-gray-800 transition-colors">
           <input
             type="text"
-            className="flex-1 bg-white text-gray-900 placeholder-gray-400 outline-none border-none text-base py-2"
+            className="flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none border-none text-base py-2 transition-colors"
             placeholder="Escribe tu mensaje..."
             value={input}
             onChange={e => setInput(e.target.value)}
@@ -312,11 +345,11 @@ export default function Chat() {
           />
           <button
             onClick={handleSend}
-            className="ml-2 bg-white rounded-full p-0 hover:bg-gray-200 transition flex items-center justify-center border border-black shadow"
+            className="ml-2 bg-white dark:bg-gray-700 rounded-full p-0 hover:bg-gray-100 dark:hover:bg-gray-600 transition-all flex items-center justify-center border border-gray-300 dark:border-gray-600 shadow"
             aria-label="Enviar"
             style={{ width: 56, height: 56 }}
           >
-            <Send size={28} color="#000" strokeWidth={2.2} className="rotate-45 mx-auto block" />
+            <Send size={28} className="text-gray-900 dark:text-white rotate-45 mx-auto block" strokeWidth={2.2} />
           </button>
         </div>
       </div>

@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.4.2] - 2025-08-11
+### 🎨 Interfaz estilo ChatGPT con barra lateral y configuraciones
+- **Barra lateral profesional**: Diseño similar a ChatGPT con navegación fluida
+- **Sistema de configuraciones**: Página dedicada con secciones organizadas
+- **Logo integrado**: Logo pequeño en la barra lateral junto al nombre "Calyx AI"
+- **Navegación mejorada**: Botón hamburguesa para abrir/cerrar menú lateral
+- **Información detallada del modelo**: "Phi-3-mini-4k-instruct (Local)" en lugar de solo "Local"
+
+### 🚀 Nuevas funcionalidades
+- **"Nuevo chat"**: Opción para limpiar conversación actual
+- **"Configuraciones"**: Acceso centralizado a todas las opciones
+- **Switch de tema integrado**: Toggle profesional dentro de configuraciones
+- **Información del sistema**: Versión, modelo de IA y desarrolladores
+- **Diseño responsive**: Adaptable a móviles y desktop
+
+### 🔧 Mejoras técnicas
+- **Context API**: Sistema de navegación entre vistas (chat/settings)
+- **Componentes modulares**: Sidebar, MenuButton, SettingsPage separados
+- **ThemeToggle mejorado**: Variantes floating e inline
+- **Gestión de estado**: Control de apertura/cierre de sidebar
+- **Overlays responsivos**: Comportamiento diferente en móvil vs desktop
+
+### 🎯 Experiencia de usuario
+- **Navegación intuitiva**: Patrones familiares de aplicaciones modernas
+- **Transiciones suaves**: Animaciones en todas las interacciones
+- **Accesibilidad mejorada**: Títulos descriptivos y botones claramente identificados
+- **Identidad visual**: Logo consistente en toda la aplicación
+
 ## [1.4.1] - 2025-08-10
 ### ⚡ Mejoras de velocidad y autoscroll
 - **Velocidad de escritura mejorada**: Aumentada 100% la velocidad de animación en consola (50ms → 25ms)
