@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.1] - 2025-08-10
+### ⚡ Mejoras de velocidad y autoscroll
+- **Velocidad de escritura mejorada**: Aumentada 100% la velocidad de animación en consola (50ms → 25ms)
+- **Parpadeo de cursor optimizado**: Velocidad de parpadeo aumentada 100% (500ms → 250ms)
+- **Autoscroll inteligente**: 
+  - Scroll automático cuando se agregan nuevos mensajes al chat
+  - Scroll en tiempo real durante la animación de escritura de la consola
+  - Comportamiento suave y natural para mejor experiencia de usuario
+- **Experiencia de chat fluida**: Ya no es necesario hacer scroll manual para ver mensajes nuevos
+
+### 🔧 Mejoras técnicas
+- **Chat.tsx**: Implementado `useRef` y `useEffect` para autoscroll automático
+- **ConsoleBlock.tsx**: Agregado scroll en tiempo real durante animación de `TerminalTypewriter`
+- **Scroll suave**: Utilizando `scrollIntoView({ behavior: "smooth" })` para transiciones fluidas
+
 ## [1.4.0] - 2025-08-03
 ### 🎯 Correcciones críticas de separación de fórmulas médicas
 - **SOLUCIONADO: Problema de reutilización de parámetros entre fórmulas**: Ahora el sistema distingue correctamente entre nuevas solicitudes de fórmulas y recolección progresiva de parámetros

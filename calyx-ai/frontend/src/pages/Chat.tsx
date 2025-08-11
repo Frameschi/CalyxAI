@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Send } from "lucide-react";
 import { ConsoleRenderer } from "../components/ConsoleRenderer";
 import { ConsoleBlockYaml } from "../components/ConsoleBlockYaml";
@@ -20,6 +20,12 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto scroll cuando se agregan mensajes
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   // Palabras clave para detectar preguntas sobre alimentos
   const patronesAlimento = [
@@ -292,6 +298,7 @@ export default function Chat() {
             );
           }
         })}
+        <div ref={messagesEndRef} />
       </div>
       <div className="p-6 bg-transparent">
         <div className="flex items-center border border-black rounded-2xl px-4 py-2 shadow-md bg-white">

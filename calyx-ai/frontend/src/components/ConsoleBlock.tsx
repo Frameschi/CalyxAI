@@ -1,5 +1,5 @@
 // components/ConsoleBlock.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 
 interface ConsoleBlockProps {
@@ -21,13 +21,19 @@ const TerminalTypewriter: React.FC<{ content: string }> = ({ content }) => {
   const [displayedText, setDisplayedText] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showCursor, setShowCursor] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (currentIndex < content.length) {
       const timer = setTimeout(() => {
         setDisplayedText(content.slice(0, currentIndex + 1));
         setCurrentIndex(currentIndex + 1);
-      }, 50); // Velocidad de typing
+        
+        // Scroll automático durante la escritura
+        if (containerRef.current) {
+          containerRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+        }
+      }, 25); // Velocidad de typing
       return () => clearTimeout(timer);
     }
   }, [currentIndex, content]);
@@ -35,12 +41,12 @@ const TerminalTypewriter: React.FC<{ content: string }> = ({ content }) => {
   useEffect(() => {
     const cursorInterval = setInterval(() => {
       setShowCursor(prev => !prev);
-    }, 500); // Parpadeo del cursor
+    }, 250); // Parpadeo del cursor
     return () => clearInterval(cursorInterval);
   }, []);
 
   return (
-    <div className="text-sm text-white font-mono whitespace-pre-wrap mb-2">
+    <div ref={containerRef} className="text-sm text-white font-mono whitespace-pre-wrap mb-2">
       {displayedText}
       <span className={`${showCursor ? 'opacity-100' : 'opacity-0'} transition-opacity`}>
         █
