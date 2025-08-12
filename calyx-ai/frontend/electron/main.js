@@ -12,7 +12,18 @@ function createWindow() {
     },
     show: false
   });
-  win.loadURL('http://localhost:5173');
+  
+  // Determinar si estamos en desarrollo o producción
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+  
+  if (isDev) {
+    win.loadURL('http://localhost:5173');
+    win.webContents.openDevTools(); // Abrir DevTools en desarrollo
+  } else {
+    // En producción, cargar el archivo HTML estático
+    win.loadFile(path.join(__dirname, '../dist/index.html'));
+  }
+  
   win.once('ready-to-show', () => win.show());
 }
 

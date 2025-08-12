@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import ModelStatusIndicator from '../components/ModelStatusIndicator';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -78,6 +79,27 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
             </div>
           </div>
 
+          {/* Estado del Modelo IA Section */}
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Estado del Modelo IA
+            </h2>
+            
+            <div className="space-y-4">
+              <ModelStatusIndicator showDetails={true} />
+              
+              <div className="text-sm text-gray-600 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+                <p className="font-medium text-blue-800 dark:text-blue-200 mb-1">
+                  💡 Información sobre el modelo
+                </p>
+                <p>
+                  Calyx AI utiliza el modelo Phi-3-mini-4k-instruct de Microsoft, que se ejecuta 
+                  completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Información Section */}
           <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
@@ -87,7 +109,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Versión</span>
-                <span className="text-gray-900 dark:text-white font-medium">1.4.2</span>
+                <span className="text-gray-900 dark:text-white font-medium">1.4.3</span>
               </div>
               
               <div className="flex justify-between">

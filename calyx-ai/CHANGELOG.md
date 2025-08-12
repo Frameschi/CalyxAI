@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.4.3] - 2025-08-12
+### 🧠 Sistema inteligente de detección y descarga del modelo IA
+- **Detección automática del modelo**: Estado en tiempo real (not_downloaded, loading, ready, error)
+- **UX de descarga profesional**: Splash screen elegante con progreso visual
+- **Estimación de tiempo**: Cálculo dinámico del tiempo restante de descarga
+- **Velocidad en tiempo real**: Monitoreo de velocidad de descarga (MB/s)
+- **Cancelación de descarga**: Posibilidad de cancelar y reintentar la descarga
+- **Progreso visual**: Barra de progreso animada con efectos shimmer
+
+### 🎨 Identidad visual personalizada
+- **Loading personalizado**: Integración del logo de carga de Calyx AI
+- **Componente reutilizable**: LoadingSpinner con múltiples tamaños (sm, md, lg, xl)
+- **Consistencia de marca**: Reemplazo de iconos genéricos por diseño propio
+- **Animaciones suaves**: Transiciones profesionales con Framer Motion
+
+### 🔧 Nuevas funcionalidades técnicas
+- **Hook useModelStatus**: Verificación automática del estado del modelo cada 10s
+- **Hook useModelDownload**: Gestión completa del proceso de descarga
+- **Endpoints del backend**: `/model/status`, `/model/download`, `/model/download/progress`
+- **Detección de caché**: Verificación inteligente de modelos ya descargados
+- **Información técnica**: Tamaño del modelo, dispositivo (GPU/CPU), velocidad
+
+### 📱 Integración en la interfaz
+- **Indicador en chat**: Estado del modelo en tiempo real en la página principal
+- **Panel en configuraciones**: Información detallada con botón de descarga
+- **Botones contextuales**: "Descargar modelo", "Reintentar", "Cancelar"
+- **Mensajes educativos**: Información sobre privacidad y funcionamiento local
+
 ## [1.4.2] - 2025-08-11
 ### 🎨 Interfaz estilo ChatGPT con barra lateral y configuraciones
 - **Barra lateral profesional**: Diseño similar a ChatGPT con navegación fluida

@@ -46,12 +46,92 @@ class IAEngine:
     def is_ready(self):
         return self.model is not None and self.tokenizer is not None and self.model_error is None
 
+    def is_model_downloaded(self):
+        """Verificar si el modelo está descargado en el cache local"""
+        try:
+            from transformers import AutoTokenizer
+            # Intentar cargar solo el tokenizer para verificar si el modelo existe
+            tokenizer_path = AutoTokenizer.from_pretrained(
+                self.model_name, 
+                local_files_only=True
+            )
+            return True
+        except Exception:
+            return False
+
+    def get_model_cache_info(self):
+        """Obtener información sobre el cache del modelo"""
+        try:
+            import os
+            from pathlib import Path
+            
+            # Directorio típico de cache de HuggingFace
+            cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+            model_cache_path = None
+            model_size = 0
+            
+            if os.path.exists(cache_dir):
+                for item in os.listdir(cache_dir):
+                    if "phi-3" in item.lower():
+                        model_path = os.path.join(cache_dir, item)
+                        if os.path.isdir(model_path):
+                            model_cache_path = model_path
+                            # Calcular tamaño del modelo
+                            for root, dirs, files in os.walk(model_path):
+                                for file in files:
+                                    model_size += os.path.getsize(os.path.join(root, file))
+                            break
+            
+            return {
+                "cache_path": model_cache_path,
+                "size_mb": round(model_size / (1024 * 1024), 2) if model_size > 0 else 0,
+                "is_downloaded": model_cache_path is not None
+            }
+        except Exception as e:
+            return {
+                "cache_path": None,
+                "size_mb": 0,
+                "is_downloaded": False,
+                "error": str(e)
+            }
+
     def get_status(self):
+        cache_info = self.get_model_cache_info()
+        
+        status_info = {
+            "model_name": self.model_name,
+            "device": self.device,
+            "is_downloaded": cache_info["is_downloaded"],
+            "cache_size_mb": cache_info["size_mb"],
+            "cache_path": cache_info["cache_path"]
+        }
+        
         if self.model_error:
-            return {"status": "error", "message": f"Modelo no disponible: {self.model_error}"}
-        if self.is_ready():
-            return {"status": "ok", "message": "Modelo cargado y listo"}
-        return {"status": "loading", "message": "Modelo aún no está listo"}
+            status_info.update({
+                "status": "error", 
+                "message": f"Modelo no disponible: {self.model_error}",
+                "ready": False
+            })
+        elif self.is_ready():
+            status_info.update({
+                "status": "ready", 
+                "message": "Modelo cargado y listo",
+                "ready": True
+            })
+        elif cache_info["is_downloaded"]:
+            status_info.update({
+                "status": "loading", 
+                "message": "Modelo descargado, cargando en memoria...",
+                "ready": False
+            })
+        else:
+            status_info.update({
+                "status": "not_downloaded", 
+                "message": "Modelo no descargado. Se descargará en el primer uso.",
+                "ready": False
+            })
+        
+        return status_info
 
     def generate(self, prompt, max_new_tokens=80, temperature=0.5):
         """

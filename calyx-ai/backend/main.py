@@ -1438,3 +1438,92 @@ async def chat(request: Request):
 @app.get("/")
 def root():
     return {"message": "Calyx AI backend activo (Phi-3 Mini-4K-Instruct)"}
+
+@app.get("/model/status")
+def get_model_status():
+    """Endpoint para verificar el estado del modelo Phi-3"""
+    try:
+        import os
+        from pathlib import Path
+        
+        # Verificar estado del motor de IA
+        if not hasattr(app.state, 'ai_engine') or app.state.ai_engine is None:
+            # Intentar inicializar el motor
+            try:
+                app.state.ai_engine = IAEngine()
+            except Exception as init_error:
+                return {
+                    "status": "error",
+                    "message": f"Error al inicializar el motor de IA: {str(init_error)}",
+                    "model_ready": False,
+                    "model_name": "microsoft/phi-3-mini-4k-instruct"
+                }
+        
+        ai_engine = app.state.ai_engine
+        
+        # Verificar si el modelo está listo
+        if ai_engine.is_ready():
+            return {
+                "status": "ready",
+                "message": "Modelo Phi-3 cargado y listo para usar",
+                "model_ready": True,
+                "model_name": ai_engine.model_name,
+                "device": ai_engine.device
+            }
+        elif ai_engine.model_error:
+            return {
+                "status": "error", 
+                "message": f"Error en el modelo: {ai_engine.model_error}",
+                "model_ready": False,
+                "model_name": ai_engine.model_name
+            }
+        else:
+            return {
+                "status": "loading",
+                "message": "Modelo en proceso de carga...",
+                "model_ready": False,
+                "model_name": ai_engine.model_name
+            }
+            
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error al verificar el estado del modelo: {str(e)}",
+            "model_ready": False,
+            "model_name": "microsoft/phi-3-mini-4k-instruct"
+        }
+
+@app.post("/model/download")
+async def download_model():
+    """Endpoint para simular la descarga del modelo"""
+    try:
+        # En una implementación real, aquí iniciaríamos la descarga del modelo
+        # Por ahora, simulamos que se está descargando
+        return {
+            "status": "download_started",
+            "message": "Descarga del modelo iniciada",
+            "estimated_size_mb": 2400,
+            "estimated_time_minutes": 5
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error al iniciar la descarga: {str(e)}"
+        }
+
+@app.get("/model/download/progress")
+async def get_download_progress():
+    """Endpoint para obtener el progreso de descarga del modelo"""
+    # En una implementación real, esto devolvería el progreso real
+    # Por ahora, simulamos un progreso
+    import random
+    progress = random.randint(0, 100)
+    
+    return {
+        "status": "downloading" if progress < 100 else "completed",
+        "progress_percentage": progress,
+        "downloaded_mb": (2400 * progress) // 100,
+        "total_mb": 2400,
+        "speed_mbps": random.uniform(5.0, 15.0),
+        "time_remaining_minutes": max(0, (100 - progress) // 10)
+    }

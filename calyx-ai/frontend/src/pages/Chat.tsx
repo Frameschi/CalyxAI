@@ -5,8 +5,8 @@ import { ConsoleRenderer } from "../components/ConsoleRenderer";
 import { ConsoleBlockYaml } from "../components/ConsoleBlockYaml";
 import { esBloqueYaml } from "../utils/formatConsole";
 import { Sidebar } from "../components/Sidebar";
-import { MenuButton } from "../components/MenuButton";
 import { SettingsPage } from "./Settings";
+import ModelStatusIndicator from "../components/ModelStatusIndicator";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -23,7 +23,6 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -274,12 +273,10 @@ export default function Chat() {
 
   const handleNewChat = () => {
     setMessages([]);
-    setSidebarOpen(false);
   };
 
   const handleOpenSettings = () => {
     setCurrentView('settings');
-    setSidebarOpen(false);
   };
 
   const handleBackToChat = () => {
@@ -292,17 +289,16 @@ export default function Chat() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-gray-900 transition-colors">
-      <MenuButton onClick={() => setSidebarOpen(true)} />
-      
+    <div className="flex h-screen bg-white dark:bg-gray-900 transition-colors">
+      {/* Sidebar fija */}
       <Sidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
         onNewChat={handleNewChat}
         onOpenSettings={handleOpenSettings}
       />
       
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col ml-80">
+        <div className="flex-1 overflow-y-auto p-6">
         {messages.map((msg: any, i: number) => {
           if (msg.from === "user") {
             return (
@@ -333,6 +329,12 @@ export default function Chat() {
         })}
         <div ref={messagesEndRef} />
       </div>
+      
+      {/* Indicador de estado del modelo */}
+      <div className="px-6 pb-2">
+        <ModelStatusIndicator className="text-sm opacity-75" />
+      </div>
+      
       <div className="p-6 bg-transparent">
         <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-2xl px-4 py-2 shadow-md bg-white dark:bg-gray-800 transition-colors">
           <input
@@ -352,6 +354,7 @@ export default function Chat() {
             <Send size={28} className="text-gray-900 dark:text-white rotate-45 mx-auto block" strokeWidth={2.2} />
           </button>
         </div>
+      </div>
       </div>
     </div>
   );
