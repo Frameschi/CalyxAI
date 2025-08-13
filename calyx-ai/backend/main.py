@@ -28,12 +28,26 @@ app.add_middleware(
 
 
 
-# Instancia global del motor de IA
-ia_engine = IAEngine()
+# Instancia global del motor de IA - CARGA LAZY
+ia_engine = None
+
+def get_ia_engine():
+    """Obtiene la instancia global de IAEngine, creándola solo si es necesario"""
+    global ia_engine
+    if ia_engine is None:
+        print("[DEBUG] Inicializando IAEngine por primera vez")
+        ia_engine = IAEngine()
+    return ia_engine
 @app.get("/health")
 def health():
     print("[LOG] /health endpoint called")
-    return ia_engine.get_status()
+    return get_ia_engine().get_status()
+
+@app.get("/ping")
+async def ping():
+    """Endpoint simple para verificar que el servidor funciona sin cargar el modelo"""
+    print("[LOG] /ping endpoint called")
+    return {"status": "ok", "message": "Server is running", "endpoints": ["ping", "health", "model/status", "chat", "alimento"]}
 
 # Ruta de la base de datos de alimentos
 DB_PATH = "datainfo.db"
@@ -213,10 +227,12 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
 
 @app.post("/chat")
 async def chat(request: Request):
+    print("="*50)
     print("[LOG] /chat endpoint called")
     data = await request.json()
     print(f"[LOG] /chat received data: {data}")
     prompt = data.get("prompt", "").strip()
+    print(f"[LOG] Prompt extraído: '{prompt}'")
     if not prompt:
         print("[LOG] /chat error: No prompt provided")
         return JSONResponse({"error": "No prompt provided"}, status_code=400)
@@ -246,31 +262,121 @@ async def chat(request: Request):
         
         print(f"[DEBUG] Último mensaje detectado: '{ultimo_mensaje}'")
         
-        # Si hay un mensaje específico reciente, usarlo para detectar la nueva fórmula
-        if ultimo_mensaje:
-            # PRIMERA PRIORIDAD: Detectar nueva solicitud de composición corporal
-            if ("composicion corporal" in ultimo_mensaje or 
-                "composición corporal" in ultimo_mensaje or
-                "analisis corporal" in ultimo_mensaje or
-                "análisis corporal" in ultimo_mensaje):
-                print(f"[DEBUG] Nueva solicitud de composición corporal detectada")
+        # FILTRO: Detectar mensajes no relacionados con fórmulas
+        mensajes_no_formula_exactos = [
+            "hola", "hello", "hi", "gracias", "thank you", "thanks", "grazie", 
+            "bye", "adiós", "hasta luego", "ok", "vale", "bien", "perfecto",
+            "entendido", "correcto", "sí", "si", "no", "como estas", "cómo estás",
+            "que tal", "qué tal", "buenas", "buenos días", "buenas tardes", 
+            "buenas noches", "saludo", "despedida", "genial", "excelente", "muy bien",
+            "adios", "chao", "nos vemos", "hasta pronto", "que tengas buen día"
+        ]
+        
+        # PATRONES: Detectar mensajes de despedida/agradecimiento con palabras adicionales
+        patrones_no_formula = [
+            # Patrones de agradecimiento
+            r"\b(genial|excelente|perfecto|muy bien|bien)\b.*\b(gracias|thank you)\b",
+            r"\b(gracias|thank you)\b.*\b(genial|excelente|perfecto|muy bien|bien)\b",
+            # Patrones de despedida AMPLIADOS
+            r"\b(buenas noches|hasta luego|adiós|adios|bye|nos vemos|chao|hasta pronto)\b",
+            r"\b(seria todo|sería todo|eso es todo|es todo)\b.*\b(adiós|adios|bye|hasta luego|nos vemos|chao)\b",
+            r"\b(gracias|thank you)\b.*\b(adiós|adios|bye|hasta luego|nos vemos|chao)\b",
+            r"\b(genial|excelente|perfecto)\b.*\b(buenas noches|hasta luego|adiós|adios|bye)\b",
+            # Combinaciones de finalización
+            r"\b(seria todo|sería todo|eso es todo|es todo|eso seria todo|eso sería todo)\b",
+            r"\b(que tengas|que tengan)\b.*\b(buen día|buena tarde|buena noche|buen fin)\b",
+            # Combinaciones comunes
+            r"\b(genial|excelente|perfecto)\b.*\b(gracias|thank you)\b.*\b(buenas noches|hasta luego|adiós|adios)\b"
+        ]
+        
+        # IMPORTANTE: Aplicar filtro con coincidencia exacta Y patrones
+        mensaje_es_simple = False
+        
+        # 1. Verificar coincidencia exacta
+        if ultimo_mensaje and ultimo_mensaje.strip() in mensajes_no_formula_exactos:
+            mensaje_es_simple = True
+            print(f"[DEBUG] Mensaje simple detectado (exacto): '{ultimo_mensaje}'")
+        
+        # 2. Verificar patrones con regex
+        if not mensaje_es_simple and ultimo_mensaje:
+            import re
+            for patron in patrones_no_formula:
+                if re.search(patron, ultimo_mensaje, re.IGNORECASE):
+                    mensaje_es_simple = True
+                    print(f"[DEBUG] Mensaje simple detectado (patrón): '{ultimo_mensaje}' -> {patron}")
+                    break
+        
+        # Si es mensaje simple, retornar None para no detectar fórmulas
+        if mensaje_es_simple:
+            return None, None
+        
+        # PRIORIDAD ABSOLUTA: Analizar las últimas 5 líneas para detectar nueva solicitud
+        lineas_recientes = prompt.strip().split('\n')[-5:]  # Solo últimas 5 líneas
+        contexto_reciente = '\n'.join(lineas_recientes).lower()
+        
+        print(f"[DEBUG] Contexto reciente analizado: {contexto_reciente}")
+        
+        # PRIMERA PRIORIDAD: Detectar nueva solicitud de IMC en contexto reciente
+        solicitudes_imc = [
+            "calcular imc", "calcula imc", "imc", "indice de masa corporal", 
+            "índice de masa corporal", "calcular mi imc", "calcula mi imc"
+        ]
+        
+        for solicitud in solicitudes_imc:
+            if solicitud in contexto_reciente:
+                print(f"[DEBUG] Nueva solicitud de IMC detectada en contexto reciente: '{solicitud}'")
+                return "imc", formulas.get("imc")
+        
+        # SEGUNDA PRIORIDAD: Detectar nueva solicitud de composición corporal en contexto reciente
+        solicitudes_composicion = [
+            "composicion corporal", "composición corporal", "analisis corporal", 
+            "análisis corporal", "calcular composicion corporal", "calcular composición corporal",
+            "composicion corporal completa", "composición corporal completa",
+            "analisis corporal completo", "análisis corporal completo"
+        ]
+        
+        for solicitud in solicitudes_composicion:
+            if solicitud in contexto_reciente:
+                print(f"[DEBUG] Nueva solicitud de composición corporal detectada en contexto reciente: '{solicitud}'")
                 return "composicion_corporal", formulas.get("composicion_corporal")
-            
-            # SEGUNDA PRIORIDAD: Detectar nueva solicitud de IMC
-            solicitudes_imc = [
-                "calcular imc", "calcula imc", "imc", "indice de masa corporal", 
-                "índice de masa corporal", "calcular mi imc", "calcula mi imc"
-            ]
-            
-            for solicitud in solicitudes_imc:
-                if solicitud in ultimo_mensaje:
-                    print(f"[DEBUG] Nueva solicitud de IMC detectada")
-                    return "imc", formulas.get("imc")
         
-        # FALLBACK: Analizar todo el prompt para detectar fórmula en progreso
-        # IMPORTANTE: Priorizar composición corporal si hay múltiples parámetros específicos
+        # FALLBACK: Si NO hay nueva solicitud reciente, analizar por fórmula en progreso
+        # Solo usar el contexto histórico si no hay solicitud clara reciente
         
-        # Detectar composición corporal por preguntas específicas en el prompt
+        # IMPORTANTE: PRIORIDAD ABSOLUTA PARA NUEVA SOLICITUD
+        # Si detectamos composición corporal en contexto reciente, NO aplicar persistencia de IMC
+        
+        # Verificar si hay solicitud explícita de composición corporal en las últimas 3 líneas
+        lineas_muy_recientes = prompt.strip().split('\n')[-3:]
+        contexto_muy_reciente = '\n'.join(lineas_muy_recientes).lower()
+        
+        # Si hay solicitud de composición corporal muy reciente, ignorar IMC anterior
+        if any(sol in contexto_muy_reciente for sol in ["composicion corporal", "composición corporal", "calcular composicion corporal", "calcular composición corporal"]):
+            print(f"[DEBUG] COMPOSICIÓN CORPORAL detectada como muy reciente - IGNORANDO persistencia IMC")
+            return "composicion_corporal", formulas.get("composicion_corporal")
+        
+        # Si hay solicitud de IMC muy reciente, aplicar IMC
+        if any(sol in contexto_muy_reciente for sol in ["calcular imc", "calcula imc"]):
+            print(f"[DEBUG] IMC detectado como muy reciente")
+            return "imc", formulas.get("imc")
+        
+        # PERSISTENCIA LIMITADA: Solo buscar en las últimas 5 líneas para evitar contaminación
+        lineas_para_persistencia = prompt.strip().split('\n')[-5:]  # Reducido de 10 a 5
+        contexto_persistencia = '\n'.join(lineas_para_persistencia).lower()
+        
+        # REGLA ESPECÍFICA: Si el último mensaje es un número después de solicitud, mantener fórmula activa
+        ultimo_es_numero = re.match(r'^\s*\d+(\.\d+)?\s*$', prompt.strip().split('\n')[-1].strip())
+        
+        if ultimo_es_numero:
+            # Buscar qué fórmula está activa por preguntas específicas en las últimas líneas
+            if any(pregunta in contexto_persistencia for pregunta in ["circunferencia media del brazo", "pliegue cutáneo", "tricipital", "cmb", "pct"]):
+                print(f"[DEBUG] Número detectado en contexto de composición corporal")
+                return "composicion_corporal", formulas.get("composicion_corporal")
+            elif any(pregunta in contexto_persistencia for pregunta in ["peso en kg", "altura en metros", "cuál es tu peso", "cuál es tu altura"]):
+                print(f"[DEBUG] Número detectado en contexto de IMC")
+                return "imc", formulas.get("imc")
+        
+        # Detectar composición corporal por preguntas específicas SOLO si no hay solicitud IMC reciente
         preguntas_composicion = [
             "circunferencia media del brazo", "pliegue cutáneo", "tricipital", 
             "bicipital", "subescapular", "ilíaco", "cmb", "pct", "pcb", "pcse", "pci"
@@ -278,13 +384,14 @@ async def chat(request: Request):
         
         hay_preguntas_composicion = any(pregunta in prompt_l for pregunta in preguntas_composicion)
         
+        # COMPOSICIÓN CORPORAL: Detectar por preguntas específicas o solicitud explícita  
         if (hay_preguntas_composicion or 
             "composicion corporal" in prompt_l or 
             "composición corporal" in prompt_l):
-            print(f"[DEBUG] Composición corporal detectada en progreso")
+            print(f"[DEBUG] Composición corporal detectada por contenido")
             return "composicion_corporal", formulas.get("composicion_corporal")
         
-        # Detectar IMC por contexto
+        # Detectar IMC por contexto general (mantenido para compatibilidad)
         if any(solicitud in prompt_l for solicitud in [
             "calcular imc", "calcula imc", "imc", "indice de masa corporal", 
             "índice de masa corporal", "calcular mi imc", "calcula mi imc"
@@ -299,8 +406,14 @@ async def chat(request: Request):
             "índice de masa corporal": "imc",
             "composicion corporal": "composicion_corporal",
             "composición corporal": "composicion_corporal", 
+            "composicion corporal completa": "composicion_corporal",
+            "composición corporal completa": "composicion_corporal",
+            "calcular composicion corporal": "composicion_corporal",
+            "calcular composición corporal": "composicion_corporal",
             "analisis corporal": "composicion_corporal",
             "análisis corporal": "composicion_corporal",
+            "analisis corporal completo": "composicion_corporal",
+            "análisis corporal completo": "composicion_corporal",
             "grasa corporal": "composicion_corporal",
             "masa corporal": "composicion_corporal",
             "densidad corporal": "composicion_corporal"
@@ -323,26 +436,59 @@ async def chat(request: Request):
 
     def extraer_parametros_usuario(prompt, formula, es_nueva_solicitud=False):
         params = {}
-        texto = prompt.lower()
         
-        # CRÍTICO: Si es una nueva solicitud de fórmula, solo buscar parámetros 
-        # en el contexto reciente, no en toda la conversación histórica
+        # CRÍTICO: Si es una nueva solicitud, SOLO buscar después de la solicitud explícita
+        # NO mezclar parámetros de conversaciones anteriores de otras fórmulas
         if es_nueva_solicitud:
-            print(f"[DEBUG] Nueva solicitud detectada - limitando búsqueda a contexto reciente")
-            # Solo buscar en las últimas 3 líneas de la conversación
+            print(f"[DEBUG] NUEVA SOLICITUD - Buscando parámetros SOLO después de la solicitud explícita")
+            
+            # Encontrar dónde empezó la nueva solicitud
             lineas = prompt.strip().split('\n')
-            contexto_reciente = lineas[-3:] if len(lineas) > 3 else lineas
-            texto = '\n'.join(contexto_reciente).lower()
-            print(f"[DEBUG] Contexto reciente: {texto}")
+            inicio_nueva_solicitud = -1
+            
+            # Buscar la línea que contiene la nueva solicitud
+            solicitudes_formulas = [
+                "calcular imc", "calcula imc", "imc", 
+                "composicion corporal", "composición corporal", "analisis corporal", "análisis corporal",
+                "calcular composicion corporal", "calcular composición corporal"
+            ]
+            
+            for i, linea in enumerate(lineas):
+                linea_lower = linea.lower()
+                for solicitud in solicitudes_formulas:
+                    if solicitud in linea_lower:
+                        # Verificar que coincida con la fórmula actual
+                        es_solicitud_imc = any(s in solicitud for s in ["imc", "indice", "índice"])
+                        es_solicitud_comp = any(s in solicitud for s in ["composicion", "composición", "analisis", "análisis"])
+                        formula_es_imc = formula.get("nombre", "").lower() == "imc"
+                        formula_es_comp = "composicion" in formula.get("nombre", "").lower()
+                        
+                        if (es_solicitud_imc and formula_es_imc) or (es_solicitud_comp and formula_es_comp):
+                            inicio_nueva_solicitud = i
+                            print(f"[DEBUG] Nueva solicitud encontrada en línea {i}: '{linea.strip()}'")
+                            break
+                
+                if inicio_nueva_solicitud != -1:
+                    break
+            
+            # Solo buscar parámetros DESPUÉS de la nueva solicitud
+            if inicio_nueva_solicitud != -1:
+                lineas_relevantes = lineas[inicio_nueva_solicitud:]
+                texto = '\n'.join(lineas_relevantes).lower()
+                print(f"[DEBUG] Analizando SOLO contexto después de nueva solicitud: {len(lineas_relevantes)} líneas")
+            else:
+                # Si no encontramos la solicitud, usar solo las últimas 3 líneas
+                texto = '\n'.join(lineas[-3:]).lower()
+                print(f"[DEBUG] No se encontró solicitud explícita, usando últimas 3 líneas")
         else:
-            # Buscar en TODA la conversación para recolección progresiva de parámetros
-            print(f"[DEBUG] Recolección progresiva - analizando toda la conversación")
-        
-        # CRÍTICO: Buscar en TODO el texto de la conversación
-        # El prompt contiene TODA la conversación, no solo el último mensaje
-        
-        # Buscar TODOS los valores numéricos mencionados junto con unidades o contexto
-        print(f"[DEBUG] Analizando texto de {len(texto)} caracteres")
+            # RECOLECCIÓN PROGRESIVA: Buscar en contexto de la fórmula actual
+            print(f"[DEBUG] Recolección progresiva - buscando parámetros de fórmula en progreso")
+            
+            # CRÍTICO: Para recolección progresiva, buscar en TODO el contexto 
+            # para NO perder parámetros de conversaciones largas como composición corporal
+            lineas = prompt.strip().split('\n')
+            texto = '\n'.join(lineas).lower()
+            print(f"[DEBUG] Analizando TODAS las {len(lineas)} líneas para recolección progresiva completa")
         
         # 1. Peso (kg) - buscar TODOS los valores de peso mencionados
         patrones_peso = [
@@ -517,6 +663,49 @@ async def chat(request: Request):
         return params
 
     formula_key, formula = detectar_formula_en_prompt(prompt, formulas)
+    
+    print(f"[DEBUG CRÍTICO] Formula detectada: {formula_key}")
+    print(f"[DEBUG CRÍTICO] Formula objeto: {formula.get('nombre') if formula else 'None'}")
+    
+    # *** CRÍTICO: PRIORIDAD ABSOLUTA PARA MENSAJES SIMPLES ***
+    # Si detectar_formula_en_prompt retorna None, None significa mensaje no relacionado
+    # FORZAR respuesta inmediata sin continuar con lógica de fórmulas
+    if formula_key is None and formula is None:
+        lineas = prompt.strip().split('\n')
+        ultimo_mensaje = ""
+        for linea in reversed(lineas):
+            if linea.strip() and not linea.strip().startswith('ai:'):
+                ultimo_mensaje = linea.strip().lower()
+                if ultimo_mensaje.startswith('user:'):
+                    ultimo_mensaje = ultimo_mensaje[5:].strip()
+                break
+
+        print(f"[DEBUG] MENSAJE SIMPLE DETECTADO - RETORNANDO INMEDIATAMENTE: '{ultimo_mensaje}'")
+        
+        # Determinar tipo de respuesta
+        if re.search(r"\b(hola|hello|hi|buenas|buenos días|buenas tardes)\b", ultimo_mensaje, re.IGNORECASE):
+            return {"message": "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy? Puedo buscar información nutricional de alimentos o calcular tu IMC.", "console_block": None}
+        elif re.search(r"\b(gracias|thank you|thanks|genial|excelente|perfecto|muy bien)\b", ultimo_mensaje, re.IGNORECASE):
+            return {"message": "¡De nada! ¿Hay algo más en lo que pueda ayudarte?", "console_block": None}
+        elif re.search(r"\b(adiós|adios|bye|hasta luego|nos vemos|chao|hasta pronto|buenas noches|seria todo|sería todo|es todo)\b", ultimo_mensaje, re.IGNORECASE):
+            return {"message": "¡Hasta luego! Que tengas un excelente día. Estoy aquí cuando necesites ayuda nutricional.", "console_block": None}
+        else:
+            return {"message": "¡Hola! ¿En qué puedo ayudarte hoy? Puedo calcular tu IMC o buscar información nutricional.", "console_block": None}
+    
+    # *** SOLO CONTINUAR SI HAY FÓRMULA DETECTADA ***
+    if not formula:
+        # Si no hay fórmula, usar fallback de IA general
+        try:
+            ia_engine = get_ia_engine()
+            if ia_engine is None:
+                return {"message": "Lo siento, no puedo procesar tu solicitud en este momento. ¿Puedes intentar calcular tu IMC?", "console_block": None}
+            
+            response = ia_engine.generate(prompt, max_new_tokens=150, temperature=0.3)
+            return {"message": response, "console_block": None}
+        except Exception as e:
+            return {"message": "¿En qué puedo ayudarte? Puedo calcular tu IMC o buscar información nutricional.", "console_block": None}
+    
+    # *** SOLO LLEGAR AQUÍ SI HAY FÓRMULA VÁLIDA ***
     if formula:
         # CRÍTICO: Detectar si es una nueva solicitud de fórmula
         # Si el último mensaje del usuario contiene una nueva solicitud, limpiar contexto
@@ -545,13 +734,41 @@ async def chat(request: Request):
             if not es_respuesta_simple:
                 # Solo entonces verificar si es nueva solicitud de fórmula
                 nuevas_solicitudes = [
+                    # Composición corporal
                     "composicion corporal", "composición corporal", "analisis corporal", 
-                    "análisis corporal", "calcular imc", "calcula imc", "imc"
+                    "análisis corporal", "calcular composicion corporal", "calcular composición corporal",
+                    "composicion corporal completa", "composición corporal completa",
+                    # IMC
+                    "calcular imc", "calcula imc", "imc", "indice de masa corporal", 
+                    "índice de masa corporal", "calcular mi imc", "calcula mi imc",
+                    # TMB
+                    "tmb", "calcular tmb", "tasa metabolica basal", "tasa metabólica basal",
+                    "harris benedict", "harris-benedict",
+                    # Otros
+                    "agua corporal", "calcular agua", "requerimiento proteico", "proteina"
                 ]
                 for solicitud in nuevas_solicitudes:
                     if solicitud in ultimo_mensaje:
                         es_nueva_solicitud = True
                         print(f"[DEBUG] Nueva solicitud detectada: {solicitud}")
+                        
+                        # CRÍTICO: Verificar si es diferente fórmula
+                        solicitud_es_imc = any(s in solicitud for s in ["imc", "indice", "índice"])
+                        solicitud_es_composicion = any(s in solicitud for s in ["composicion", "composición", "analisis", "análisis"])
+                        formula_actual_es_imc = formula_key == "imc"
+                        formula_actual_es_composicion = formula_key == "composicion_corporal"
+                        
+                        # Si solicita IMC pero la fórmula actual es composición, o viceversa
+                        if (solicitud_es_imc and not formula_actual_es_imc) or \
+                           (solicitud_es_composicion and not formula_actual_es_composicion):
+                            print(f"[DEBUG] CAMBIO DE FÓRMULA detectado: {solicitud} -> {formula_key}")
+                            es_nueva_solicitud = True
+                        
+                        # FORZAR nueva solicitud si es una solicitud explícita de fórmula
+                        if solicitud in ultimo_mensaje:
+                            print(f"[DEBUG] SOLICITUD EXPLÍCITA detectada - FORZANDO nueva solicitud")
+                            es_nueva_solicitud = True
+                        
                         break
         
         # CRÍTICO: Extraer parámetros considerando si es nueva solicitud
@@ -563,6 +780,31 @@ async def chat(request: Request):
         print(f"[DEBUG] Parámetros extraídos: {params_usuario}")
         print(f"[DEBUG] Es nueva solicitud: {es_nueva_solicitud}")
         print(f"[DEBUG] Fórmula detectada: {formula_key}")
+        
+        # CRÍTICO: Si es nueva solicitud, mantener la fórmula activa sin volver a detectar
+        # Esto evita que el sistema cambie de fórmula cuando el usuario responde con datos
+        if es_nueva_solicitud:
+            # Marcar que tenemos una fórmula activa persistente
+            formula_activa = formula_key
+            print(f"[DEBUG] Fórmula activa establecida: {formula_activa}")
+        else:
+            # Si no es nueva solicitud, verificar si hay fórmula activa en el contexto reciente
+            lineas_recientes = prompt.strip().split('\n')[-10:]
+            contexto_reciente = '\n'.join(lineas_recientes).lower()
+            
+            # IMPORTANTE: Solo aplicar persistencia si NO HAY nueva solicitud explícita diferente
+            # Si hay "calcular imc" en las últimas líneas Y no hay solicitud de composición corporal reciente
+            tiene_imc_reciente = any(sol in contexto_reciente for sol in ["calcular imc", "calcula imc"])
+            tiene_composicion_reciente = any(sol in contexto_reciente for sol in ["composicion corporal", "composición corporal", "analisis corporal", "análisis corporal"])
+            
+            if tiene_imc_reciente and not tiene_composicion_reciente and formula_key != "imc":
+                print(f"[DEBUG] Manteniendo IMC activo por solicitud reciente (sin interferencia de composición)")
+                formula_key = "imc"
+                formula = formulas.get("imc")
+            elif tiene_composicion_reciente and not tiene_imc_reciente and formula_key != "composicion_corporal":
+                print(f"[DEBUG] Manteniendo composición corporal activa por solicitud reciente (sin interferencia de IMC)")
+                formula_key = "composicion_corporal"
+                formula = formulas.get("composicion_corporal")
         
         # Detectar parámetros faltantes
         faltantes = []
@@ -644,6 +886,8 @@ async def chat(request: Request):
                     }
                 }
         elif formula_key.lower() == "composicion_corporal":
+            print(f"[DEBUG COMPOSICIÓN] Iniciando cálculo de composición corporal")
+            print(f"[DEBUG COMPOSICIÓN] Parámetros recibidos: {params_usuario}")
             try:
                 peso = float(params_usuario.get("peso"))
                 altura = float(params_usuario.get("altura"))
@@ -655,7 +899,12 @@ async def chat(request: Request):
                 pcse_mm = float(params_usuario.get("pcse"))  # Pliegue Cutáneo Subescapular (mm)
                 pci_mm = float(params_usuario.get("pci"))  # Pliegue Cutáneo Ilíaco (mm)
                 
+                print(f"[DEBUG COMPOSICIÓN] Parámetros parseados correctamente:")
+                print(f"  peso={peso}, altura={altura}, edad={edad}, sexo={sexo}")
+                print(f"  cmb={cmb}, pct={pct_mm}, pcb={pcb_mm}, pcse={pcse_mm}, pci={pci_mm}")
+                
                 if altura <= 0 or cmb <= 0 or pct_mm <= 0 or pcb_mm <= 0 or pcse_mm <= 0 or pci_mm <= 0:
+                    print(f"[DEBUG COMPOSICIÓN] Error: valores <= 0 detectados")
                     return {
                         "message": "Error: Todos los valores deben ser mayores a cero.",
                         "console_block": {
@@ -1095,6 +1344,9 @@ async def chat(request: Request):
                     f"• Evaluación nutricional por CMB: {porcentaje_cmb}% del valor de referencia ({interpretacion_cmb})"
                 )
                 
+                print(f"[DEBUG COMPOSICIÓN] ¡CÁLCULO COMPLETADO EXITOSAMENTE!")
+                print(f"[DEBUG COMPOSICIÓN] Longitud del output: {len(output_block)} caracteres")
+                
                 return {
                     "message": "",
                     "console_block": {
@@ -1104,6 +1356,10 @@ async def chat(request: Request):
                     }
                 }
             except Exception as e:
+                print(f"[DEBUG COMPOSICIÓN] ¡ERROR EN CÁLCULO!: {str(e)}")
+                print(f"[DEBUG COMPOSICIÓN] Tipo de error: {type(e)}")
+                import traceback
+                print(f"[DEBUG COMPOSICIÓN] Stack trace: {traceback.format_exc()}")
                 return {
                     "message": f"Error al calcular la composición corporal: {str(e)}",
                     "console_block": {
@@ -1338,17 +1594,42 @@ async def chat(request: Request):
         contexto_nutricional = "\nResponde solo con información nutricional basada en la base de datos proporcionada. Si no tienes datos, indica que no puedes responder con precisión.\n"
     # Si no es tema de nutrición, no agregar contexto nutricional
 
-    # Instrucción de sistema profesional para el modelo
+    # Instrucción de sistema optimizada para Phi-3 como asistente nutricional
     system_instruction = (
         "<|system|>\n"
-        "Eres Calyx AI, un asistente inteligente especializado en nutrición, pero también puedes responder preguntas generales siempre que sean apropiadas. "
-        "Responde exclusivamente sobre el alimento proporcionado. No mezcles ni inventes otros. "
-        "Evita responder con historias personales, experiencias laborales, universidades, anécdotas o cosas inventadas. "
-        "Responde siempre en español, de forma breve, clara y profesional. "
-        "Si no sabes algo con certeza, admite tu límite con honestidad. "
-        "Nunca repitas literalmente el mensaje del usuario, ni imites sus palabras o frases. "
-        "Si la pregunta es sobre nutrición, responde solo con los datos nutricionales, sin frases introductorias, descripciones generales ni relleno irrelevante.\n"
-        f"{contexto_nutricional}"
+        "Eres Calyx AI, un asistente nutricional profesional especializado. Tu función principal es:\n\n"
+        
+        "**PRIORIDADES:**\n"
+        "1. NUTRICIÓN: Proporcionar información nutricional precisa de alimentos usando tu base de datos\n"
+        "2. CÁLCULOS: Realizar cálculos médicos (IMC, composición corporal) cuando se soliciten\n"
+        "3. CONSULTAS GENERALES: Responder preguntas apropiadas de salud y bienestar\n\n"
+        
+        "**CAPACIDADES ESPECÍFICAS:**\n"
+        "- Acceso a base de datos SMAE con información nutricional de alimentos argentinos\n"
+        "- Cálculos médicos: IMC, composición corporal, pliegues cutáneos, densidad corporal\n"
+        "- Interpretación de resultados según estándares OMS/NIH\n"
+        "- Análisis nutricional por porciones específicas\n\n"
+        
+        "**ESTILO DE RESPUESTA:**\n"
+        "- CONCISO: Respuestas directas, máximo 2-3 oraciones\n"
+        "- PROFESIONAL: Lenguaje técnico apropiado pero comprensible\n"
+        "- BASADO EN DATOS: Solo información verificable de tu base de datos\n"
+        "- SIN RELLENO: No agregues frases introductorias innecesarias\n\n"
+        
+        "**RESTRICCIONES:**\n"
+        "- NO inventes datos nutricionales\n"
+        "- NO proporciones consejos médicos específicos\n"
+        "- NO repitas textualmente las preguntas del usuario\n"
+        "- NO uses experiencias personales o anécdotas\n\n"
+        
+        "**FORMATO ESPERADO:**\n"
+        "Para alimentos: Información nutricional directa (kcal, proteínas, grasas, carbohidratos)\n"
+        "Para cálculos: Usa el sistema console_block cuando corresponda\n"
+        "Para saludos: Respuesta amigable pero breve\n\n"
+        
+        f"{contexto_nutricional}\n"
+        
+        "Responde siempre en español y mantén el foco en nutrición y salud.\n"
     )
     # Si se trata de cálculo de IMC y ya se devolvió el resultado, no continuar con el prompt normal
     if formula_key and formula_key.lower() == "imc" and not faltantes:
@@ -1356,24 +1637,46 @@ async def chat(request: Request):
         return  # return explícito para evitar continuar
     # Prompt reforzado para respuestas cerradas y profesionales
     prompt_final = f"{system_instruction}<|user|>\n{prompt}\n<|assistant|>\n"
-    if not ia_engine.is_ready():
-        status = ia_engine.get_status()
+    
+    # *** FALLBACK RÁPIDO PARA SALUDOS SIMPLES ***
+    # Si es un saludo simple y no hay fórmula, usar respuesta rápida
+    if not formula_key:
+        lineas = prompt.strip().split('\n')
+        ultimo_mensaje = ""
+        for linea in reversed(lineas):
+            if linea.strip() and not linea.strip().startswith('ai:'):
+                ultimo_mensaje = linea.strip().lower()
+                if ultimo_mensaje.startswith('user:'):
+                    ultimo_mensaje = ultimo_mensaje[5:].strip()
+                break
+        
+        # Saludos simples - respuesta inmediata sin AI
+        saludos_simples = ["hola", "hello", "hi", "buenas", "buenos días", "buenas tardes", "buenas noches"]
+        if ultimo_mensaje and any(saludo == ultimo_mensaje.strip() for saludo in saludos_simples):
+            print(f"[DEBUG] Fallback rápido para saludo: '{ultimo_mensaje}'")
+            return {"message": "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy? Puedo buscar información nutricional de alimentos o calcular tu IMC."}
+    
+    if not get_ia_engine().is_ready():
+        status = get_ia_engine().get_status()
         print(f"[LOG] /chat error: IA engine not ready: {status['message']}")
         return JSONResponse({"error": status["message"]}, status_code=503 if status["status"]=="loading" else 500)
     try:
-        # --- Parámetros de generación robustos ---
+        # --- Parámetros de generación optimizados para Phi-3 nutricional ---
         gen_args = {
-            "max_new_tokens": 180,  # Respuestas completas
-            "temperature": 0.6,
-            "top_p": 0.9,
+            "max_new_tokens": 120,  # Respuestas más concisas y precisas
+            "temperature": 0.3,     # Menos creatividad, más consistencia
+            "top_p": 0.8,           # Enfoque en tokens más probables
+            "top_k": 30,            # Limitar vocabulario para mayor precisión
+            "repetition_penalty": 1.1,  # Evitar repeticiones
+            "do_sample": True
         }
-        stop_tokens = ["<|user|>", "<|system|>"]
+        stop_tokens = ["<|user|>", "<|system|>", "<|assistant|>", "\n\n", "Usuario:", "Pregunta:"]
         import inspect
-        sig = inspect.signature(ia_engine.generate)
+        sig = inspect.signature(get_ia_engine().generate)
         if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
-            response = ia_engine.generate(prompt_final, stop=stop_tokens, **gen_args)
+            response = get_ia_engine().generate(prompt_final, stop=stop_tokens, **gen_args)
         else:
-            response = ia_engine.generate(prompt_final)
+            response = get_ia_engine().generate(prompt_final)
         for stop in stop_tokens:
             idx = response.find(stop)
             if idx != -1:
@@ -1446,18 +1749,11 @@ def get_model_status():
         import os
         from pathlib import Path
         
-        # Verificar estado del motor de IA
+        # Verificar estado del motor de IA - USAR INSTANCIA GLOBAL
         if not hasattr(app.state, 'ai_engine') or app.state.ai_engine is None:
-            # Intentar inicializar el motor
-            try:
-                app.state.ai_engine = IAEngine()
-            except Exception as init_error:
-                return {
-                    "status": "error",
-                    "message": f"Error al inicializar el motor de IA: {str(init_error)}",
-                    "model_ready": False,
-                    "model_name": "microsoft/phi-3-mini-4k-instruct"
-                }
+            # Usar la instancia global existente en lugar de crear nueva
+            print("[DEBUG] Usando instancia global de IAEngine existente")
+            app.state.ai_engine = get_ia_engine()
         
         ai_engine = app.state.ai_engine
         

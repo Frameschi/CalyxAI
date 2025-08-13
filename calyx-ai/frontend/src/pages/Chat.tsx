@@ -23,8 +23,21 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeAnimations, setActiveAnimations] = useState(0); // Contador de animaciones activas
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Estado combinado para deshabilitar input
+  const isProcessing = loading || activeAnimations > 0;
+  
+  // Funciones para manejar estado de animaciones
+  const handleTypingStart = () => {
+    setActiveAnimations(prev => prev + 1);
+  };
+  
+  const handleTypingEnd = () => {
+    setActiveAnimations(prev => Math.max(0, prev - 1));
+  };
 
   // Auto scroll cuando se agregan mensajes
   useEffect(() => {
@@ -41,11 +54,13 @@ export default function Chat() {
   ];
 
   const handleSend = async () => {
-    if (input.trim() === "" || loading) return;
+    if (input.trim() === "" || isProcessing) return; // Usar isProcessing en lugar de solo loading
+    
     const userMsg = input;
     setMessages([...messages, { from: "user", text: userMsg, type: "text" }]);
     setInput("");
     setLoading(true);
+    
     try {
       // Detectar si la pregunta es sobre un alimento
       let alimentoDetectado = null;
@@ -316,7 +331,13 @@ export default function Chat() {
           } else if (msg.type === "console") {
             return (
               <div key={i} className="mb-4 flex justify-start">
-                <ConsoleRenderer title={msg.title} input={msg.input} output={msg.output} />
+                <ConsoleRenderer 
+                  title={msg.title} 
+                  input={msg.input} 
+                  output={msg.output} 
+                  onTypingStart={handleTypingStart}
+                  onTypingEnd={handleTypingEnd}
+                />
               </div>
             );
           } else {
@@ -339,17 +360,23 @@ export default function Chat() {
         <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-2xl px-4 py-2 shadow-md bg-white dark:bg-gray-800 transition-colors">
           <input
             type="text"
-            className="flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none border-none text-base py-2 transition-colors"
-            placeholder="Escribe tu mensaje..."
+            className={`flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none border-none text-base py-2 transition-colors ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+            placeholder={
+              loading ? "Procesando respuesta..." : 
+              activeAnimations > 0 ? "Desglosando cálculos..." : 
+              "Escribe tu mensaje..."
+            }
             value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            onChange={e => !isProcessing && setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !isProcessing && handleSend()}
+            disabled={isProcessing}
           />
           <button
             onClick={handleSend}
-            className="ml-2 bg-white dark:bg-gray-700 rounded-full p-0 hover:bg-gray-100 dark:hover:bg-gray-600 transition-all flex items-center justify-center border border-gray-300 dark:border-gray-600 shadow"
+            className={`ml-2 bg-white dark:bg-gray-700 rounded-full p-0 hover:bg-gray-100 dark:hover:bg-gray-600 transition-all flex items-center justify-center border border-gray-300 dark:border-gray-600 shadow ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             aria-label="Enviar"
             style={{ width: 56, height: 56 }}
+            disabled={isProcessing}
           >
             <Send size={28} className="text-gray-900 dark:text-white rotate-45 mx-auto block" strokeWidth={2.2} />
           </button>

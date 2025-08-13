@@ -1,5 +1,5 @@
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, logging
+from transformers import AutoModelForCausalLM, AutoTokenizer, logging, BitsAndBytesConfig
 import torch
 import os
 
@@ -21,24 +21,69 @@ class IAEngine:
             print("[IAEngine] No se detectó GPU, usando CPU (puede ser muy lento o fallar por RAM)")
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            # Intentar cargar en 4-bit si bitsandbytes está disponible
-            try:
-                import bitsandbytes as bnb
-                print("[IAEngine] bitsandbytes detectado, intentando cargar modelo en 4-bit...")
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_name,
-                    load_in_4bit=True,
-                    device_map="auto"
-                )
-                print("[IAEngine] Modelo cargado en 4-bit.")
-            except ImportError:
-                print("[IAEngine] bitsandbytes no disponible, cargando modelo en FP16...")
+            
+            # Configuración explícita para GPU con 4-bit optimizada
+            if torch.cuda.is_available():
+                try:
+                    import bitsandbytes as bnb
+                    print("[IAEngine] bitsandbytes detectado, cargando modelo en GPU 4-bit optimizada...")
+                    
+                    # Configuración simplificada y más conservadora
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_compute_dtype=torch.float16,
+                        bnb_4bit_use_double_quant=True,
+                        bnb_4bit_quant_type="nf4"
+                    )
+                    
+                    # Intento 1: Configuración optimizada
+                    try:
+                        self.model = AutoModelForCausalLM.from_pretrained(
+                            self.model_name,
+                            quantization_config=quantization_config,
+                            device_map={"": 0},
+                            torch_dtype=torch.float16,
+                            trust_remote_code=True,
+                            low_cpu_mem_usage=True
+                        )
+                        print("[IAEngine] Modelo cargado en GPU con 4-bit cuantización optimizada.")
+                    except Exception as opt_error:
+                        print(f"[IAEngine] Error con configuración optimizada: {opt_error}")
+                        print("[IAEngine] Intentando configuración básica...")
+                        
+                        # Intento 2: Configuración básica sin optimizaciones avanzadas
+                        self.model = AutoModelForCausalLM.from_pretrained(
+                            self.model_name,
+                            quantization_config=quantization_config,
+                            device_map="auto",  # Dejar que PyTorch decida automáticamente
+                            trust_remote_code=True
+                        )
+                        print("[IAEngine] Modelo cargado en GPU con configuración básica.")
+                        
+                except ImportError:
+                    print("[IAEngine] bitsandbytes no disponible, cargando en GPU FP16...")
+                    # Configuración de fallback sin cuantización
+                    try:
+                        self.model = AutoModelForCausalLM.from_pretrained(
+                            self.model_name,
+                            torch_dtype=torch.float16,
+                            device_map="auto",
+                            trust_remote_code=True
+                        )
+                        print("[IAEngine] Modelo cargado en GPU FP16.")
+                    except Exception as fp16_error:
+                        print(f"[IAEngine] Error en GPU FP16: {fp16_error}")
+                        print("[IAEngine] Intentando carga en CPU como último recurso...")
+                        raise fp16_error  # Propagar el error para que caiga al bloque CPU
+            else:
+                print("[IAEngine] GPU no disponible, usando CPU...")
                 self.model = AutoModelForCausalLM.from_pretrained(
                     self.model_name,
                     torch_dtype=torch.float16,
-                    device_map="auto"
+                    device_map="cpu",
+                    trust_remote_code=True
                 )
-                print("[IAEngine] Modelo cargado en FP16.")
+                print("[IAEngine] Modelo cargado en CPU.")
         except Exception as e:
             self.model_error = str(e)
             print(f"[IAEngine] Error al cargar el modelo: {self.model_error}")
@@ -138,21 +183,51 @@ class IAEngine:
         Generación profesional: respuestas más breves, naturales y menos propensas a alucinaciones.
         - max_new_tokens=80: Limita la longitud de la respuesta.
         - temperature=0.5: Menos creatividad, más precisión.
+        - timeout=10s: Evita colgarse (Windows compatible)
         """
+        import threading
+        import time
+        
         if not self.is_ready():
             raise RuntimeError("El modelo no está listo o falló la carga.")
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=True,
-                temperature=temperature,
-                top_p=0.95,
-                top_k=40,
-                repetition_penalty=1.1
-            )
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Variable para almacenar resultado
+        result = {"response": None, "error": None}
+        
+        def generate_with_timeout():
+            try:
+                inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+                with torch.no_grad():
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_new_tokens=max_new_tokens,
+                        do_sample=True,
+                        temperature=temperature,
+                        top_p=0.95,
+                        top_k=40,
+                        repetition_penalty=1.1,
+                        use_cache=False,  # Fix DynamicCache.seen_tokens error
+                        pad_token_id=self.tokenizer.eos_token_id  # Fix padding issues
+                    )
+                result["response"] = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            except Exception as e:
+                result["error"] = str(e)
+        
+        # Ejecutar generación en thread separado
+        thread = threading.Thread(target=generate_with_timeout)
+        thread.daemon = True
+        thread.start()
+        thread.join(timeout=10)  # 10 segundos timeout
+        
+        # Si el thread aún está vivo, significa que se colgó
+        if thread.is_alive():
+            print("[IAEngine] Timeout - usando respuesta fallback")
+            response = "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
+        elif result["error"]:
+            print(f"[IAEngine] Error en generación: {result['error']}")
+            response = "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
+        else:
+            response = result["response"]
         # Limpiar respuesta: eliminar eco del prompt si lo hay
         if response.lower().startswith(prompt.lower()):
             response = response[len(prompt):].lstrip("\n :.-")

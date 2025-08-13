@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.4.4] - 2025-08-13
+### 🐛 Corrección crítica del ciclo infinito en composición corporal
+- **Fix ciclo infinito**: Resuelto bug donde sistema preguntaba repetidamente los mismos parámetros
+- **Mejora en recolección progresiva**: Ahora analiza TODA la conversación en lugar de solo las últimas 15 líneas
+- **Debug logging**: Sistema completo de logs para monitoreo en tiempo real de detección de fórmulas
+- **Validación robusta**: Prevención de pérdida de parámetros en conversaciones largas
+- **Optimización de memoria**: Mantiene contexto completo sin degradación de rendimiento
+
+### 🎯 Mejoras en detección de parámetros médicos
+- **Extracción mejorada**: Algoritmos más precisos para peso, altura, edad, sexo y pliegues cutáneos
+- **Persistencia de datos**: Los parámetros ya ingresados no se pierden durante la conversación
+- **Validación inteligente**: Rangos de valores apropiados para cada medida antropométrica
+- **Compatibilidad de unidades**: Soporte automático para kg/cm/mm en diferentes formatos
+
+### 🔧 Optimizaciones técnicas del backend
+- **Análisis contextual completo**: Procesamiento de toda la conversación para recolección progresiva
+- **Prevención de contaminación**: Separación clara entre nuevas solicitudes y recolección de datos
+- **Logging estructurado**: Trazabilidad completa del flujo de detección y cálculo de fórmulas
+
 ## [1.4.3] - 2025-08-12
 ### 🧠 Sistema inteligente de detección y descarga del modelo IA
 - **Detección automática del modelo**: Estado en tiempo real (not_downloaded, loading, ready, error)
