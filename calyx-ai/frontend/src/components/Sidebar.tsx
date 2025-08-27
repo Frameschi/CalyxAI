@@ -16,7 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex items-center p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-3">
           <img 
-            src="/logo.png" 
+            src="./logo.png" 
             alt="Calyx AI Logo" 
             className="w-8 h-8 object-contain"
           />

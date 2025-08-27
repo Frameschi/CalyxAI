@@ -44,16 +44,47 @@ def get_ia_engine():
 @app.on_event("startup")
 async def startup_event():
     """Evento que se ejecuta al iniciar el servidor - Carga automática del modelo"""
-    global ia_engine
+    global ia_engine, backend_startup_status
     print("\n🚀 [STARTUP] Iniciando CalyxAI Backend...")
-    print("📚 [STARTUP] Cargando modelo de IA automáticamente...")
     
     try:
+        # Paso 1: Servidor iniciado
+        backend_startup_status["status"] = "starting"
+        backend_startup_status["current_step"] = "Servidor iniciado..."
+        backend_startup_status["current_step_number"] = 1
+        backend_startup_status["progress_percentage"] = 25
+        print("✅ [STARTUP] Servidor FastAPI iniciado!")
+        
+        # Paso 2: Verificando dependencias
+        backend_startup_status["status"] = "dependencies"
+        backend_startup_status["current_step"] = "Verificando dependencias..."
+        backend_startup_status["current_step_number"] = 2
+        backend_startup_status["progress_percentage"] = 50
+        print("� [STARTUP] Verificando dependencias...")
+        
+        # Paso 3: Cargando modelo
+        backend_startup_status["status"] = "loading_model"
+        backend_startup_status["current_step"] = "Cargando modelo de IA..."
+        backend_startup_status["current_step_number"] = 3
+        backend_startup_status["progress_percentage"] = 75
+        print("�📚 [STARTUP] Cargando modelo de IA automáticamente...")
+        
         # Inicializar el motor de IA automáticamente al startup
         ia_engine = IAEngine()
+        
+        # Paso 4: Listo
+        backend_startup_status["status"] = "ready"
+        backend_startup_status["current_step"] = "Sistema listo!"
+        backend_startup_status["current_step_number"] = 4
+        backend_startup_status["progress_percentage"] = 100
         print("✅ [STARTUP] Modelo de IA cargado exitosamente!")
         print("🎯 [STARTUP] CalyxAI listo para recibir peticiones del frontend")
+        
     except Exception as e:
+        backend_startup_status["status"] = "error"
+        backend_startup_status["current_step"] = f"Error: {str(e)}"
+        backend_startup_status["progress_percentage"] = 0
+        backend_startup_status["error_message"] = str(e)
         print(f"❌ [STARTUP] Error al cargar modelo de IA: {str(e)}")
         print("⚠️  [STARTUP] El servidor continuará, pero el modelo se cargará en la primera petición")
         ia_engine = None
@@ -65,7 +96,13 @@ def health():
 @app.get("/ping")
 async def ping():
     """Endpoint simple para verificar que el servidor funciona sin cargar el modelo"""
-    print("[LOG] /ping endpoint called")
+    # Solo log cada 30 segundos para reducir spam
+    import time
+    global last_ping_log
+    current_time = time.time()
+    if not hasattr(ping, 'last_ping_log') or current_time - ping.last_ping_log > 30:
+        print("[LOG] /ping endpoint called (logging reduced)")
+        ping.last_ping_log = current_time
     return {"status": "ok", "message": "Server is running", "endpoints": ["ping", "health", "model/status", "chat", "alimento"]}
 
 # Ruta de la base de datos de alimentos
@@ -1808,19 +1845,103 @@ def get_model_status():
             "model_name": "microsoft/phi-3-mini-4k-instruct"
         }
 
+# Variables globales para el progreso de descarga
+download_status = {
+    "status": "idle",  # idle, downloading, completed, error
+    "progress_percentage": 0,
+    "downloaded_bytes": 0,
+    "total_bytes": 0,
+    "speed_bps": 0,
+    "time_remaining": 0,
+    "error_message": ""
+}
+
+# Variables globales para el progreso de inicio del backend
+backend_startup_status = {
+    "status": "starting",  # starting, dependencies, loading_model, ready, error
+    "progress_percentage": 0,
+    "current_step": "Iniciando servidor...",
+    "total_steps": 4,
+    "current_step_number": 1,
+    "error_message": ""
+}
+
 @app.post("/model/download")
 async def download_model():
-    """Endpoint para simular la descarga del modelo"""
+    """Endpoint para iniciar la descarga real del modelo"""
+    import asyncio
+    import threading
+    from huggingface_hub import snapshot_download
+    import os
+    import time
+    
+    global download_status
+    
+    if download_status["status"] == "downloading":
+        return {
+            "status": "already_downloading",
+            "message": "La descarga ya está en progreso"
+        }
+    
     try:
-        # En una implementación real, aquí iniciaríamos la descarga del modelo
-        # Por ahora, simulamos que se está descargando
+        # Resetear estado
+        download_status = {
+            "status": "downloading",
+            "progress_percentage": 0,
+            "downloaded_bytes": 0,
+            "total_bytes": 2400000000,  # Aproximadamente 2.4 GB
+            "speed_bps": 0,
+            "time_remaining": 0,
+            "error_message": ""
+        }
+        
+        def download_worker():
+            try:
+                model_name = "microsoft/Phi-3-mini-4k-instruct"
+                cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+                
+                # Función para mostrar progreso
+                def progress_callback(filename, current, total):
+                    global download_status
+                    if total > 0:
+                        download_status["downloaded_bytes"] = current
+                        download_status["total_bytes"] = total
+                        download_status["progress_percentage"] = min((current / total) * 100, 100)
+                
+                print(f"[Download] Iniciando descarga de {model_name}")
+                
+                # Descargar el modelo
+                local_path = snapshot_download(
+                    repo_id=model_name,
+                    cache_dir=cache_dir,
+                    resume_download=True,
+                    local_files_only=False
+                )
+                
+                print(f"[Download] Modelo descargado en: {local_path}")
+                download_status["status"] = "completed"
+                download_status["progress_percentage"] = 100
+                
+            except Exception as e:
+                print(f"[Download] Error durante la descarga: {e}")
+                download_status["status"] = "error"
+                download_status["error_message"] = str(e)
+        
+        # Iniciar descarga en hilo separado
+        download_thread = threading.Thread(target=download_worker)
+        download_thread.daemon = True
+        download_thread.start()
+        
         return {
             "status": "download_started",
             "message": "Descarga del modelo iniciada",
             "estimated_size_mb": 2400,
-            "estimated_time_minutes": 5
+            "model_name": "microsoft/Phi-3-mini-4k-instruct"
         }
+        
     except Exception as e:
+        download_status["status"] = "error"
+        download_status["error_message"] = str(e)
         return {
             "status": "error",
             "message": f"Error al iniciar la descarga: {str(e)}"
@@ -1828,17 +1949,126 @@ async def download_model():
 
 @app.get("/model/download/progress")
 async def get_download_progress():
-    """Endpoint para obtener el progreso de descarga del modelo"""
-    # En una implementación real, esto devolvería el progreso real
-    # Por ahora, simulamos un progreso
-    import random
-    progress = random.randint(0, 100)
+    """Endpoint para obtener el progreso real de descarga del modelo"""
+    global download_status
+    
+    # Calcular velocidad aproximada
+    speed_mbps = download_status["speed_bps"] / (1024 * 1024) if download_status["speed_bps"] > 0 else 0
+    
+    # Calcular tiempo restante
+    if download_status["speed_bps"] > 0 and download_status["total_bytes"] > 0:
+        remaining_bytes = download_status["total_bytes"] - download_status["downloaded_bytes"]
+        time_remaining = remaining_bytes / download_status["speed_bps"]
+    else:
+        time_remaining = 0
     
     return {
-        "status": "downloading" if progress < 100 else "completed",
-        "progress_percentage": progress,
-        "downloaded_mb": (2400 * progress) // 100,
-        "total_mb": 2400,
-        "speed_mbps": random.uniform(5.0, 15.0),
-        "time_remaining_minutes": max(0, (100 - progress) // 10)
+        "status": download_status["status"],
+        "progress_percentage": download_status["progress_percentage"],
+        "downloaded_mb": download_status["downloaded_bytes"] / (1024 * 1024),
+        "total_mb": download_status["total_bytes"] / (1024 * 1024),
+        "speed_mbps": speed_mbps,
+        "time_remaining_minutes": time_remaining / 60 if time_remaining > 0 else 0,
+        "error_message": download_status.get("error_message", "")
     }
+
+@app.get("/backend/startup/progress")
+async def get_backend_startup_progress():
+    """Endpoint para obtener el progreso de inicio del backend"""
+    global backend_startup_status
+    
+    return {
+        "status": backend_startup_status["status"],
+        "progress_percentage": backend_startup_status["progress_percentage"],
+        "current_step": backend_startup_status["current_step"],
+        "current_step_number": backend_startup_status["current_step_number"],
+        "total_steps": backend_startup_status["total_steps"],
+        "error_message": backend_startup_status.get("error_message", "")
+    }
+
+@app.get("/model/cache/info")
+async def get_model_cache_info():
+    """Obtener información sobre el modelo en caché"""
+    try:
+        import os
+        from pathlib import Path
+        
+        # Directorio de caché de HuggingFace
+        cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+        model_name = "microsoft/Phi-3-mini-4k-instruct"
+        
+        # Buscar el modelo en caché
+        model_found = False
+        model_path = None
+        total_size = 0
+        files_count = 0
+        
+        if os.path.exists(cache_dir):
+            for item in os.listdir(cache_dir):
+                if "phi-3" in item.lower() or "microsoft--phi-3" in item.lower():
+                    potential_path = os.path.join(cache_dir, item)
+                    if os.path.isdir(potential_path):
+                        model_path = potential_path
+                        model_found = True
+                        
+                        # Calcular tamaño total
+                        for root, dirs, files in os.walk(potential_path):
+                            for file in files:
+                                file_path = os.path.join(root, file)
+                                try:
+                                    total_size += os.path.getsize(file_path)
+                                    files_count += 1
+                                except:
+                                    pass
+                        break
+        
+        return {
+            "model_found": model_found,
+            "cache_path": model_path,
+            "total_size_bytes": total_size,
+            "total_size_mb": round(total_size / (1024 * 1024), 2),
+            "files_count": files_count,
+            "cache_directory": cache_dir,
+            "model_name": model_name
+        }
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "model_found": False,
+            "cache_path": None
+        }
+
+@app.get("/model/cache/clear")
+async def clear_model_cache():
+    """Limpiar el caché del modelo"""
+    try:
+        import os
+        import shutil
+        
+        cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+        deleted_items = []
+        
+        if os.path.exists(cache_dir):
+            for item in os.listdir(cache_dir):
+                if "phi-3" in item.lower() or "microsoft--phi-3" in item.lower():
+                    item_path = os.path.join(cache_dir, item)
+                    if os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                        deleted_items.append(item)
+        
+        return {
+            "status": "success",
+            "deleted_items": deleted_items,
+            "message": f"Eliminados {len(deleted_items)} elementos del caché"
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

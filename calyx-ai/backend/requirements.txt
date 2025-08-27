@@ -3,3 +3,4 @@ uvicorn[standard]
 transformers
 torch
 bitsandbytes
+huggingface_hub

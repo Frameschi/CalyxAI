@@ -109,7 +109,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Versión</span>
-                <span className="text-gray-900 dark:text-white font-medium">1.4.3</span>
+                <span className="text-gray-900 dark:text-white font-medium">1.4.5</span>
               </div>
               
               <div className="flex justify-between">

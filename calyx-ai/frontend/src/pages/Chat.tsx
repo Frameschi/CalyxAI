@@ -7,6 +7,8 @@ import { esBloqueYaml } from "../utils/formatConsole";
 import { Sidebar } from "../components/Sidebar";
 import { SettingsPage } from "./Settings";
 import ModelStatusIndicator from "../components/ModelStatusIndicator";
+import { useModelStatus } from "../hooks/useModelStatus";
+import BackendStartupProgress from "../components/BackendStartupProgress";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -25,8 +27,12 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [activeAnimations, setActiveAnimations] = useState(0); // Contador de animaciones activas
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
+  const [showBackendProgress, setShowBackendProgress] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null); // Nueva referencia para el input
+  
+  // Hook para verificar el estado del modelo
+  const { modelStatus, isLoading: modelLoading, error: modelError } = useModelStatus();
   
   // Estado combinado para deshabilitar input
   const isProcessing = loading || activeAnimations > 0;
@@ -330,6 +336,49 @@ export default function Chat() {
       {/* Main content area */}
       <div className="flex-1 flex flex-col ml-80">
         <div className="flex-1 overflow-y-auto p-6">
+        {/* Pantalla de bienvenida cuando no hay mensajes */}
+        {messages.length === 0 && (
+          <div className="flex-1 flex items-center justify-center min-h-96">
+            <div className="text-center space-y-6 max-w-md">
+              <div className="text-4xl">🧬</div>
+              <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
+                Bienvenido a Calyx AI
+              </h2>
+              <p className="text-gray-600 dark:text-gray-300">
+                Asistente de cálculos médicos con IA local
+              </p>
+              
+              {/* Mostrar progreso del backend si está iniciándose */}
+              {showBackendProgress && (
+                <BackendStartupProgress 
+                  onReady={() => setShowBackendProgress(false)}
+                  className="max-w-md mx-auto"
+                />
+              )}
+              
+              {/* Estado del modelo cuando el backend esté listo */}
+              {!showBackendProgress && (
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border">
+                  <ModelStatusIndicator showDetails={true} className="text-base" />
+                </div>
+              )}
+              
+              {/* Mensaje adicional si hay error de conexión (solo cuando no se muestra progreso) */}
+              {!showBackendProgress && modelError && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <p className="text-red-700 dark:text-red-300 text-sm">
+                    No se puede conectar con el backend. Asegúrate de que el servidor esté ejecutándose en el puerto 8000.
+                  </p>
+                </div>
+              )}
+              
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Escribe tu consulta médica para comenzar
+              </p>
+            </div>
+          </div>
+        )}
+        
         {messages.map((msg: any, i: number) => {
           if (msg.from === "user") {
             return (
@@ -367,10 +416,12 @@ export default function Chat() {
         <div ref={messagesEndRef} />
       </div>
       
-      {/* Indicador de estado del modelo */}
-      <div className="px-6 pb-2">
-        <ModelStatusIndicator className="text-sm opacity-75" />
-      </div>
+      {/* Indicador de estado del modelo (solo cuando hay mensajes) */}
+      {messages.length > 0 && (
+        <div className="px-6 pb-2">
+          <ModelStatusIndicator className="text-sm opacity-75" />
+        </div>
+      )}
       
       <div className="p-6 bg-transparent">
         <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-2xl px-4 py-2 shadow-md bg-white dark:bg-gray-800 transition-colors">

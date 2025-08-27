@@ -1,7 +1,7 @@
 {
   "name": "calyx-ai",
   "productName": "Calyx AI",
-  "version": "1.4.3",
+  "version": "1.4.5",
   "description": "AI-powered medical calculation assistant with local Phi-3 model",
   "author": {
     "name": "ARCROSS",
@@ -47,6 +47,7 @@
     "appId": "com.arcross.calyxai",
     "productName": "Calyx AI",
     "copyright": "Copyright © 2025 ARCROSS",
+    "icon": "public/icon.ico",
     "directories": {
       "output": "dist-installer"
     },
@@ -54,12 +55,25 @@
       "dist/**/*",
       "electron/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      "../backend/**/*"
     ],
     "extraResources": [
       {
         "from": "public/logo.png",
         "to": "logo.png"
+      },
+      {
+        "from": "public/loading.png",
+        "to": "loading.png"
+      },
+      {
+        "from": "../backend",
+        "to": "backend"
+      },
+      {
+        "from": "start-backend.bat",
+        "to": "start-backend.bat"
       }
     ],
     "win": {
@@ -72,6 +86,7 @@
           ]
         }
       ],
+      "icon": "public/icon.ico",
       "verifyUpdateCodeSignature": false,
       "signAndEditExecutable": false,
       "forceCodeSigning": false

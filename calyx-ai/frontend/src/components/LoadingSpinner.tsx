@@ -18,7 +18,7 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
 
   return (
     <img 
-      src="/loading.png" 
+      src="./loading.png" 
       alt="Loading..." 
       className={`animate-spin ${sizeClasses[size]} ${className}`}
     />

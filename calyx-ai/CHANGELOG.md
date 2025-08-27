@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.5] - 2025-08-27
+### 🚀 Sistema completo de auto-inicio del backend en producción
+- **Auto-inicio funcionando**: Backend se inicia automáticamente al abrir la aplicación instalada
+- **Script batch optimizado**: Comando con rutas corregidas para espacios en nombres de carpetas
+- **CMD visible para diagnóstico**: Ventana de terminal visible durante desarrollo para monitoreo
+- **Gestión de procesos**: Control completo del ciclo de vida del backend desde Electron
+
+### 📊 Barra de progreso mejorada y optimizada  
+- **Progreso lineal**: Cambio de "Paso 1 de 4" a progreso limpio de 0-100%
+- **Números redondeados**: Eliminados decimales innecesarios (14% en lugar de 13.9566666%)
+- **Timing inteligente**: Espera 30 segundos antes de mostrar errores reales
+- **Estados progresivos**: "Iniciando backend..." → "Cargando Python..." → "Preparando modelo..."
+
+### ⚡ Optimización del polling y logging
+- **Polling adaptativo**: Intervalos dinámicos según estado (60s cuando ready, 15s en error)
+- **Logging reducido**: 95% menos logs de /ping en CMD (solo cada 30 segundos)
+- **Mejor rendimiento**: Menor consumo de CPU y red durante operación normal
+
+### 🔧 Sincronización de versiones
+- **Versiones consistentes**: VERSION.txt, package.json y Settings.tsx sincronizados en 1.4.5
+- **Instalador limpio**: Solo una versión final sin archivos de desarrollo
+- **Corrección de rutas**: Manejo apropiado de espacios en rutas de instalación Windows
+
 ## [1.4.4] - 2025-08-13
 ### 🐛 Corrección crítica del ciclo infinito en composición corporal
 - **Fix ciclo infinito**: Resuelto bug donde sistema preguntaba repetidamente los mismos parámetros
