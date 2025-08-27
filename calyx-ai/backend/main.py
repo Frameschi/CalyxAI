@@ -28,16 +28,35 @@ app.add_middleware(
 
 
 
-# Instancia global del motor de IA - CARGA LAZY
+# Instancia global del motor de IA - CARGA AUTOMÁTICA AL STARTUP
 ia_engine = None
 
 def get_ia_engine():
-    """Obtiene la instancia global de IAEngine, creándola solo si es necesario"""
+    """Obtiene la instancia global de IAEngine"""
     global ia_engine
     if ia_engine is None:
-        print("[DEBUG] Inicializando IAEngine por primera vez")
+        print("[DEBUG] Motor IA no inicializado en startup, cargando ahora...")
         ia_engine = IAEngine()
+    else:
+        print("[DEBUG] Usando instancia global de IAEngine existente")
     return ia_engine
+
+@app.on_event("startup")
+async def startup_event():
+    """Evento que se ejecuta al iniciar el servidor - Carga automática del modelo"""
+    global ia_engine
+    print("\n🚀 [STARTUP] Iniciando CalyxAI Backend...")
+    print("📚 [STARTUP] Cargando modelo de IA automáticamente...")
+    
+    try:
+        # Inicializar el motor de IA automáticamente al startup
+        ia_engine = IAEngine()
+        print("✅ [STARTUP] Modelo de IA cargado exitosamente!")
+        print("🎯 [STARTUP] CalyxAI listo para recibir peticiones del frontend")
+    except Exception as e:
+        print(f"❌ [STARTUP] Error al cargar modelo de IA: {str(e)}")
+        print("⚠️  [STARTUP] El servidor continuará, pero el modelo se cargará en la primera petición")
+        ia_engine = None
 @app.get("/health")
 def health():
     print("[LOG] /health endpoint called")
