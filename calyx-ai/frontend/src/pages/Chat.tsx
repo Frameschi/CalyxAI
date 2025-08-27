@@ -26,6 +26,7 @@ export default function Chat() {
   const [activeAnimations, setActiveAnimations] = useState(0); // Contador de animaciones activas
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null); // Nueva referencia para el input
   
   // Estado combinado para deshabilitar input
   const isProcessing = loading || activeAnimations > 0;
@@ -44,6 +45,11 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Auto focus en el input cuando se carga la página
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
   // Palabras clave para detectar preguntas sobre alimentos
   const patronesAlimento = [
     /informaci[óo]n completa de ([a-zA-Záéíóúñ ]+)/i,
@@ -60,6 +66,11 @@ export default function Chat() {
     setMessages([...messages, { from: "user", text: userMsg, type: "text" }]);
     setInput("");
     setLoading(true);
+    
+    // Reenfoque automático del input después de un breve delay para permitir que React actualice el estado
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
     
     try {
       // Detectar si la pregunta es sobre un alimento
@@ -283,6 +294,11 @@ export default function Chat() {
       }
     } finally {
       setLoading(false);
+      
+      // Reenfoque automático del input cuando termine el procesamiento
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 200);
     }
   };
 
@@ -359,6 +375,7 @@ export default function Chat() {
       <div className="p-6 bg-transparent">
         <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-2xl px-4 py-2 shadow-md bg-white dark:bg-gray-800 transition-colors">
           <input
+            ref={inputRef}
             type="text"
             className={`flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none border-none text-base py-2 transition-colors ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             placeholder={
