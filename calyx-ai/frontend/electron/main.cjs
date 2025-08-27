@@ -69,6 +69,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1024,
     height: 768,
+    icon: path.join(__dirname, '../public/icon.ico'), // Icono para la ventana de la aplicación
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: true,
