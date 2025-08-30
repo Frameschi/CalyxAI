@@ -178,12 +178,12 @@ class IAEngine:
         
         return status_info
 
-    def generate(self, prompt, max_new_tokens=80, temperature=0.5):
+    def generate(self, prompt, max_new_tokens=120, temperature=0.3):
         """
-        Generación profesional: respuestas más breves, naturales y menos propensas a alucinaciones.
-        - max_new_tokens=80: Limita la longitud de la respuesta.
-        - temperature=0.5: Menos creatividad, más precisión.
-        - timeout=10s: Evita colgarse (Windows compatible)
+        Generación optimizada para asistente nutricional:
+        - max_new_tokens=120: Respuestas más completas pero concisas
+        - temperature=0.3: Más consistente, menos aleatoriedad
+        - timeout=15s: Más tiempo para respuestas de calidad
         """
         import threading
         import time
@@ -203,9 +203,10 @@ class IAEngine:
                         max_new_tokens=max_new_tokens,
                         do_sample=True,
                         temperature=temperature,
-                        top_p=0.95,
-                        top_k=40,
-                        repetition_penalty=1.1,
+                        top_p=0.9,  # Más selectivo en las opciones
+                        top_k=50,   # Mayor diversidad controlada  
+                        repetition_penalty=1.2,  # Evita más repeticiones
+                        no_repeat_ngram_size=3,   # Evita repetir frases de 3 palabras
                         use_cache=False,  # Fix DynamicCache.seen_tokens error
                         pad_token_id=self.tokenizer.eos_token_id  # Fix padding issues
                     )
@@ -217,7 +218,7 @@ class IAEngine:
         thread = threading.Thread(target=generate_with_timeout)
         thread.daemon = True
         thread.start()
-        thread.join(timeout=10)  # 10 segundos timeout
+        thread.join(timeout=15)  # 15 segundos timeout para mejores respuestas
         
         # Si el thread aún está vivo, significa que se colgó
         if thread.is_alive():

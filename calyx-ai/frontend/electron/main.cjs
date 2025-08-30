@@ -4,6 +4,18 @@ const { spawn } = require('child_process');
 
 let backendProcess = null;
 
+// Configurar el icono de la aplicación globalmente
+if (process.platform === 'win32') {
+  // Determinar la ruta del icono según el entorno
+  const iconPath = app.isPackaged 
+    ? path.join(process.resourcesPath, 'icon.ico')
+    : path.join(__dirname, '../public/icon.ico');
+  
+  app.setAppUserModelId('com.arcross.calyxai');
+  
+  console.log('Configurando icono global:', iconPath);
+}
+
 function startBackend() {
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
   
@@ -66,10 +78,20 @@ function stopBackend() {
 }
 
 function createWindow() {
+  // Usar ruta simplificada que funcione tanto en dev como en producción
+  let iconPath = path.join(__dirname, '../assets/icons/icon.ico');
+  
+  // Si estamos en producción, el icono estará en una ubicación diferente
+  if (app.isPackaged) {
+    iconPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'icons', 'icon.ico');
+  }
+  
+  console.log('Ruta del icono:', iconPath);
+  
   const win = new BrowserWindow({
     width: 1024,
     height: 768,
-    icon: path.join(__dirname, '../public/icon.ico'), // Icono para la ventana de la aplicación
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: true,

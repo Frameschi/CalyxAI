@@ -318,6 +318,30 @@ async def chat(request: Request):
         
         print(f"[DEBUG] Último mensaje detectado: '{ultimo_mensaje}'")
         
+        # IMPORTANTE: VERIFICAR SI HAY FÓRMULA EN PROGRESO ACTIVA (últimas 3 líneas solamente)
+        formula_en_progreso = False
+        
+        # Buscar SOLO en las últimas 3 líneas para detectar fórmula realmente activa
+        lineas_recientes = lineas[-3:] if len(lineas) >= 3 else lineas
+        print(f"[DEBUG] Últimas 3 líneas para buscar fórmula activa: {lineas_recientes}")
+        
+        for linea in reversed(lineas_recientes):
+            if linea.strip().startswith('ai:'):
+                mensaje_ai = linea.strip()[3:].lower()
+                print(f"[DEBUG] Analizando mensaje AI: '{mensaje_ai}'")
+                # Solo considerar preguntas específicas de parámetros como evidencia de fórmula activa
+                if any(pregunta in mensaje_ai for pregunta in [
+                    "cuál es tu peso en kg", "cuál es tu altura en metros", 
+                    "cuántos años tienes", "eres hombre o mujer"
+                ]):
+                    formula_en_progreso = True
+                    print(f"[DEBUG] Fórmula ACTIVA detectada en últimas 3 líneas: '{mensaje_ai[:50]}...'")
+                    break
+        
+        # Si no hay fórmula activa reciente, no considerar como progreso
+        if not formula_en_progreso:
+            print(f"[DEBUG] No hay fórmula activa reciente - mensajes pueden ser tratados como simples")
+        
         # FILTRO: Detectar mensajes no relacionados con fórmulas
         mensajes_no_formula_exactos = [
             "hola", "hello", "hi", "gracias", "thank you", "thanks", "grazie", 
@@ -345,16 +369,16 @@ async def chat(request: Request):
             r"\b(genial|excelente|perfecto)\b.*\b(gracias|thank you)\b.*\b(buenas noches|hasta luego|adiós|adios)\b"
         ]
         
-        # IMPORTANTE: Aplicar filtro con coincidencia exacta Y patrones
+        # APLICAR FILTRO: Solo si NO hay fórmula en progreso
         mensaje_es_simple = False
         
-        # 1. Verificar coincidencia exacta
-        if ultimo_mensaje and ultimo_mensaje.strip() in mensajes_no_formula_exactos:
+        # 1. Verificar coincidencia exacta (pero no si hay fórmula en progreso)
+        if ultimo_mensaje and ultimo_mensaje.strip() in mensajes_no_formula_exactos and not formula_en_progreso:
             mensaje_es_simple = True
             print(f"[DEBUG] Mensaje simple detectado (exacto): '{ultimo_mensaje}'")
         
-        # 2. Verificar patrones con regex
-        if not mensaje_es_simple and ultimo_mensaje:
+        # 2. Verificar patrones con regex (pero no si hay fórmula en progreso)
+        if not mensaje_es_simple and ultimo_mensaje and not formula_en_progreso:
             import re
             for patron in patrones_no_formula:
                 if re.search(patron, ultimo_mensaje, re.IGNORECASE):
@@ -362,28 +386,29 @@ async def chat(request: Request):
                     print(f"[DEBUG] Mensaje simple detectado (patrón): '{ultimo_mensaje}' -> {patron}")
                     break
         
-        # Si es mensaje simple, retornar None para no detectar fórmulas
-        if mensaje_es_simple:
+        # Si es mensaje simple Y no hay fórmula en progreso, retornar None para no detectar fórmulas
+        if mensaje_es_simple and not formula_en_progreso:
+            print(f"[DEBUG] Mensaje simple confirmado - no hay fórmula en progreso")
             return None, None
         
-        # PRIORIDAD ABSOLUTA: Analizar las últimas 5 líneas para detectar nueva solicitud
-        lineas_recientes = prompt.strip().split('\n')[-5:]  # Solo últimas 5 líneas
-        contexto_reciente = '\n'.join(lineas_recientes).lower()
+        # Si hay fórmula en progreso, continuar con detección incluso si parece mensaje simple
+        if formula_en_progreso:
+            print(f"[DEBUG] Fórmula en progreso - continuando análisis aunque mensaje parezca simple")
         
-        print(f"[DEBUG] Contexto reciente analizado: {contexto_reciente}")
+        print(f"[DEBUG] Analizando solo el último mensaje del usuario: '{ultimo_mensaje}'")
         
-        # PRIMERA PRIORIDAD: Detectar nueva solicitud de IMC en contexto reciente
+        # PRIMERA PRIORIDAD: Detectar nueva solicitud de IMC en el ÚLTIMO MENSAJE del usuario
         solicitudes_imc = [
             "calcular imc", "calcula imc", "imc", "indice de masa corporal", 
             "índice de masa corporal", "calcular mi imc", "calcula mi imc"
         ]
         
         for solicitud in solicitudes_imc:
-            if solicitud in contexto_reciente:
-                print(f"[DEBUG] Nueva solicitud de IMC detectada en contexto reciente: '{solicitud}'")
+            if solicitud in ultimo_mensaje:  # Solo buscar en el último mensaje del usuario
+                print(f"[DEBUG] Nueva solicitud de IMC detectada en último mensaje: '{solicitud}'")
                 return "imc", formulas.get("imc")
         
-        # SEGUNDA PRIORIDAD: Detectar nueva solicitud de composición corporal en contexto reciente
+        # SEGUNDA PRIORIDAD: Detectar nueva solicitud de composición corporal en el ÚLTIMO MENSAJE del usuario
         solicitudes_composicion = [
             "composicion corporal", "composición corporal", "analisis corporal", 
             "análisis corporal", "calcular composicion corporal", "calcular composición corporal",
@@ -392,8 +417,8 @@ async def chat(request: Request):
         ]
         
         for solicitud in solicitudes_composicion:
-            if solicitud in contexto_reciente:
-                print(f"[DEBUG] Nueva solicitud de composición corporal detectada en contexto reciente: '{solicitud}'")
+            if solicitud in ultimo_mensaje:  # Solo buscar en el último mensaje del usuario
+                print(f"[DEBUG] Nueva solicitud de composición corporal detectada en último mensaje: '{solicitud}'")
                 return "composicion_corporal", formulas.get("composicion_corporal")
         
         # FALLBACK: Si NO hay nueva solicitud reciente, analizar por fórmula en progreso
@@ -421,10 +446,19 @@ async def chat(request: Request):
         contexto_persistencia = '\n'.join(lineas_para_persistencia).lower()
         
         # REGLA ESPECÍFICA: Si el último mensaje es un número después de solicitud, mantener fórmula activa
-        ultimo_es_numero = re.match(r'^\s*\d+(\.\d+)?\s*$', prompt.strip().split('\n')[-1].strip())
+        import re
+        ultimo_mensaje_crudo = prompt.strip().split('\n')[-1].strip()
+        # Quitar prefijo user: si existe
+        if ultimo_mensaje_crudo.lower().startswith('user:'):
+            ultimo_mensaje_crudo = ultimo_mensaje_crudo[5:].strip()
+        print(f"[DEBUG] Verificando si es número: '{ultimo_mensaje_crudo}'")
+        ultimo_es_numero = re.match(r'^\s*\d+(\.\d+)?\s*$', ultimo_mensaje_crudo)
+        print(f"[DEBUG] Resultado regex número: {ultimo_es_numero is not None}")
         
         if ultimo_es_numero:
             # Buscar qué fórmula está activa por preguntas específicas en las últimas líneas
+            ultimo_numero = prompt.strip().split('\n')[-1].strip()
+            print(f"[DEBUG] Número detectado: '{ultimo_numero}', contexto: '{contexto_persistencia}'")
             if any(pregunta in contexto_persistencia for pregunta in ["circunferencia media del brazo", "pliegue cutáneo", "tricipital", "cmb", "pct"]):
                 print(f"[DEBUG] Número detectado en contexto de composición corporal")
                 return "composicion_corporal", formulas.get("composicion_corporal")
@@ -441,21 +475,22 @@ async def chat(request: Request):
         hay_preguntas_composicion = any(pregunta in prompt_l for pregunta in preguntas_composicion)
         
         # COMPOSICIÓN CORPORAL: Detectar por preguntas específicas o solicitud explícita  
-        if (hay_preguntas_composicion or 
-            "composicion corporal" in prompt_l or 
-            "composición corporal" in prompt_l):
-            print(f"[DEBUG] Composición corporal detectada por contenido")
+        # Detectar composición corporal SOLO en último mensaje del usuario (no en respuestas AI)
+        if (ultimo_mensaje and hay_preguntas_composicion) or (ultimo_mensaje and (
+            "composicion corporal" in ultimo_mensaje or 
+            "composición corporal" in ultimo_mensaje)):
+            print(f"[DEBUG] Composición corporal detectada en último mensaje del usuario")
             return "composicion_corporal", formulas.get("composicion_corporal")
         
-        # Detectar IMC por contexto general (mantenido para compatibilidad)
-        if any(solicitud in prompt_l for solicitud in [
+        # Detectar IMC por contexto general SOLO en último mensaje del usuario (no en respuestas AI)
+        if ultimo_mensaje and any(solicitud in ultimo_mensaje for solicitud in [
             "calcular imc", "calcula imc", "imc", "indice de masa corporal", 
             "índice de masa corporal", "calcular mi imc", "calcula mi imc"
         ]):
-            print(f"[DEBUG] IMC detectado en progreso")
+            print(f"[DEBUG] IMC detectado en último mensaje del usuario")
             return "imc", formulas.get("imc")
         
-        # Buscar por términos mapeados como último recurso
+        # Definir mapeo de términos
         mapeo_terminos = {
             "imc": "imc",
             "indice de masa corporal": "imc",
@@ -475,18 +510,22 @@ async def chat(request: Request):
             "densidad corporal": "composicion_corporal"
         }
         
+        # Buscar por términos mapeados SOLO en último mensaje del usuario (no en respuestas AI)
         for termino, clave in mapeo_terminos.items():
-            if termino in prompt_l and clave in formulas:
+            if ultimo_mensaje and termino in ultimo_mensaje and clave in formulas:
+                print(f"[DEBUG] Fórmula '{clave}' detectada por término '{termino}' en último mensaje")
                 return clave, formulas[clave]
         
-        # Buscar por nombre exacto o clave
+        # Buscar por nombre exacto o clave SOLO en último mensaje del usuario (no en respuestas AI)
         for key, formula in formulas.items():
             # Buscar por nombre exacto o alias
             nombre = formula.get("nombre", "").lower()
-            if nombre and nombre in prompt_l:
+            if ultimo_mensaje and nombre and nombre in ultimo_mensaje:
+                print(f"[DEBUG] Fórmula '{key}' detectada por nombre '{nombre}' en último mensaje")
                 return key, formula
             # Buscar por clave interna
-            if key in prompt_l:
+            if ultimo_mensaje and key in ultimo_mensaje:
+                print(f"[DEBUG] Fórmula '{key}' detectada por clave en último mensaje")
                 return key, formula
         return None, None
 
@@ -527,11 +566,22 @@ async def chat(request: Request):
                 if inicio_nueva_solicitud != -1:
                     break
             
-            # Solo buscar parámetros DESPUÉS de la nueva solicitud
+            # Solo buscar parámetros DESPUÉS de la nueva solicitud (no antes)
             if inicio_nueva_solicitud != -1:
+                # CRÍTICO: Para nueva solicitud, solo buscar DESPUÉS de la solicitud
                 lineas_relevantes = lineas[inicio_nueva_solicitud:]
-                texto = '\n'.join(lineas_relevantes).lower()
-                print(f"[DEBUG] Analizando SOLO contexto después de nueva solicitud: {len(lineas_relevantes)} líneas")
+                
+                # EXTRA: Filtrar respuestas anteriores de IA para evitar contaminación
+                lineas_filtradas = []
+                for linea in lineas_relevantes:
+                    # Saltar respuestas de IA que podrían tener parámetros antiguos
+                    if not (linea.strip().startswith('ai:') and any(old in linea.lower() for old in [
+                        'peso normal', 'sobrepeso', 'obesidad', 'imc =', 'resultado:'
+                    ])):
+                        lineas_filtradas.append(linea)
+                
+                texto = '\n'.join(lineas_filtradas).lower()
+                print(f"[DEBUG] Analizando SOLO {len(lineas_filtradas)} líneas después de nueva solicitud (filtradas)")
             else:
                 # Si no encontramos la solicitud, usar solo las últimas 3 líneas
                 texto = '\n'.join(lineas[-3:]).lower()
@@ -740,13 +790,14 @@ async def chat(request: Request):
         
         # Determinar tipo de respuesta
         if re.search(r"\b(hola|hello|hi|buenas|buenos días|buenas tardes)\b", ultimo_mensaje, re.IGNORECASE):
-            return {"message": "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy? Puedo buscar información nutricional de alimentos o calcular tu IMC.", "console_block": None}
+            return {"message": "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?", "console_block": None}
+        elif re.search(r"\b(¿cómo estás|como estas|¿como estas|cómo estás|how are you|¿qué tal|que tal)\b", ultimo_mensaje, re.IGNORECASE):
+            return {"message": "¡Estoy muy bien, gracias por preguntar! ¿En qué puedo ayudarte hoy?", "console_block": None}
         elif re.search(r"\b(gracias|thank you|thanks|genial|excelente|perfecto|muy bien)\b", ultimo_mensaje, re.IGNORECASE):
             return {"message": "¡De nada! ¿Hay algo más en lo que pueda ayudarte?", "console_block": None}
         elif re.search(r"\b(adiós|adios|bye|hasta luego|nos vemos|chao|hasta pronto|buenas noches|seria todo|sería todo|es todo)\b", ultimo_mensaje, re.IGNORECASE):
             return {"message": "¡Hasta luego! Que tengas un excelente día. Estoy aquí cuando necesites ayuda nutricional.", "console_block": None}
-        else:
-            return {"message": "¡Hola! ¿En qué puedo ayudarte hoy? Puedo calcular tu IMC o buscar información nutricional.", "console_block": None}
+        # Para otros mensajes, no hacer return - continuar al procesamiento de IA normal
     
     # *** SOLO CONTINUAR SI HAY FÓRMULA DETECTADA ***
     if not formula:
@@ -925,7 +976,7 @@ async def chat(request: Request):
                     f"RESULTADO:\nIMC = {imc} ({interpretacion})"
                 )
                 return {
-                    "message": "",
+                    "message": "He calculado tu IMC con los datos proporcionados:",
                     "console_block": {
                         "title": "Cálculo",
                         "input": "",
@@ -1465,26 +1516,45 @@ async def chat(request: Request):
         if es_solo_salida_reflejo(user_input, respuesta) and respuesta_es_solo_saludo(user_input):
             return respuesta_para_saludo(user_input)
         
-        # Evitar que repita instrucciones del sistema
+        # Filtrar respuestas problemáticas más agresivamente
+        respuesta_lower = respuesta.lower().strip()
+        
+        # 1. Evitar repetición del mensaje del usuario
+        user_lower = user_input.lower().strip()
+        if user_lower in respuesta_lower and len(user_input) > 10:
+            return "¿En qué más puedo ayudarte con información nutricional?"
+        
+        # 2. Evitar que repita instrucciones del sistema
         instrucciones_sistema = [
-            "responde exclusivamente sobre el alimento proporcionado",
-            "no mezcles ni inventes otros",
-            "evita responder con historias personales", 
-            "responde siempre en español",
-            "de forma breve, clara y profesional",
-            "si no sabes algo con certeza",
-            "admite tu límite con honestidad",
-            "nunca repitas literalmente el mensaje del usuario",
-            "calyx ai",
-            "asistente inteligente",
-            "especializado en nutrición"
+            "responde exclusivamente", "no mezcles ni inventes", "evita responder con historias",
+            "responde siempre en español", "de forma breve", "si no sabes algo",
+            "admite tu límite", "nunca repitas literalmente", "calyx ai", "asistente inteligente",
+            "especializado en nutrición", "tu función principal", "prioridades", "capacidades específicas",
+            "estilo de respuesta", "restricciones", "formato esperado", "reglas estrictas", "tu misión"
         ]
         
-        respuesta_lower = respuesta.lower()
         if any(instr in respuesta_lower for instr in instrucciones_sistema):
-            return "Lo siento, no tengo información específica sobre eso en este momento. ¿Hay algo más en lo que pueda ayudarte?"
+            return "¿En qué puedo ayudarte con información nutricional?"
         
-        return respuesta
+        # 3. Evitar respuestas muy largas (más de 3 líneas)
+        lineas = respuesta.strip().split('\n')
+        if len(lineas) > 3:
+            respuesta = '\n'.join(lineas[:3])
+        
+        # 4. Evitar respuestas que empiecen con "Como asistente..." o similares
+        patrones_problematicos = [
+            "como asistente", "soy un asistente", "como calyx ai", "como ia", 
+            "no puedo proporcionar", "no tengo la capacidad", "mi función es"
+        ]
+        
+        if any(patron in respuesta_lower for patron in patrones_problematicos):
+            return "¿Qué información nutricional necesitas?"
+        
+        # 5. Limpiar respuestas redundantes
+        if "¿en qué puedo ayudarte?" in respuesta_lower and "¿en qué más puedo ayudarte?" in respuesta_lower:
+            return "¿En qué puedo ayudarte?"
+        
+        return respuesta.strip()
     print("[LOG] /chat endpoint called")
     data = await request.json()
     print(f"[LOG] /chat received data: {data}")
@@ -1653,39 +1723,30 @@ async def chat(request: Request):
     # Instrucción de sistema optimizada para Phi-3 como asistente nutricional
     system_instruction = (
         "<|system|>\n"
-        "Eres Calyx AI, un asistente nutricional profesional especializado. Tu función principal es:\n\n"
+        "Eres Calyx AI, un asistente nutricional especializado y directo.\n\n"
         
-        "**PRIORIDADES:**\n"
-        "1. NUTRICIÓN: Proporcionar información nutricional precisa de alimentos usando tu base de datos\n"
-        "2. CÁLCULOS: Realizar cálculos médicos (IMC, composición corporal) cuando se soliciten\n"
-        "3. CONSULTAS GENERALES: Responder preguntas apropiadas de salud y bienestar\n\n"
+        "**TU MISIÓN:**\n"
+        "1. Responder preguntas sobre nutrición y alimentos\n"
+        "2. Realizar cálculos médicos cuando se soliciten\n"
+        "3. Mantener conversación profesional y útil\n\n"
         
-        "**CAPACIDADES ESPECÍFICAS:**\n"
-        "- Acceso a base de datos SMAE con información nutricional de alimentos argentinos\n"
-        "- Cálculos médicos: IMC, composición corporal, pliegues cutáneos, densidad corporal\n"
-        "- Interpretación de resultados según estándares OMS/NIH\n"
-        "- Análisis nutricional por porciones específicas\n\n"
+        "**REGLAS ESTRICTAS:**\n"
+        "- RESPUESTAS CORTAS: Máximo 2-3 líneas\n"
+        "- SIN REPETIR: No repitas la pregunta del usuario\n"
+        "- SIN INVENTAR: Solo datos reales de la base de datos\n"
+        "- SIN RELLENO: Directo al punto, sin frases innecesarias\n"
+        "- EN ESPAÑOL: Siempre responde en español\n\n"
         
-        "**ESTILO DE RESPUESTA:**\n"
-        "- CONCISO: Respuestas directas, máximo 2-3 oraciones\n"
-        "- PROFESIONAL: Lenguaje técnico apropiado pero comprensible\n"
-        "- BASADO EN DATOS: Solo información verificable de tu base de datos\n"
-        "- SIN RELLENO: No agregues frases introductorias innecesarias\n\n"
+        "**EJEMPLOS DE RESPUESTAS CORRECTAS:**\n"
+        "Pregunta: '¿Qué nutrientes tiene la manzana?'\n"
+        "Respuesta: 'La manzana aporta 52 kcal por 100g, 0.3g proteínas, 13.8g carbohidratos y 2.4g fibra.'\n\n"
         
-        "**RESTRICCIONES:**\n"
-        "- NO inventes datos nutricionales\n"
-        "- NO proporciones consejos médicos específicos\n"
-        "- NO repitas textualmente las preguntas del usuario\n"
-        "- NO uses experiencias personales o anécdotas\n\n"
-        
-        "**FORMATO ESPERADO:**\n"
-        "Para alimentos: Información nutricional directa (kcal, proteínas, grasas, carbohidratos)\n"
-        "Para cálculos: Usa el sistema console_block cuando corresponda\n"
-        "Para saludos: Respuesta amigable pero breve\n\n"
+        "Pregunta: '¿Cómo estás?'\n"
+        "Respuesta: 'Muy bien, gracias. ¿En qué puedo ayudarte con nutrición?'\n\n"
         
         f"{contexto_nutricional}\n"
         
-        "Responde siempre en español y mantén el foco en nutrición y salud.\n"
+        "Sé útil, preciso y conciso.\n"
     )
     # Si se trata de cálculo de IMC y ya se devolvió el resultado, no continuar con el prompt normal
     if formula_key and formula_key.lower() == "imc" and not faltantes:
@@ -1710,7 +1771,7 @@ async def chat(request: Request):
         saludos_simples = ["hola", "hello", "hi", "buenas", "buenos días", "buenas tardes", "buenas noches"]
         if ultimo_mensaje and any(saludo == ultimo_mensaje.strip() for saludo in saludos_simples):
             print(f"[DEBUG] Fallback rápido para saludo: '{ultimo_mensaje}'")
-            return {"message": "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy? Puedo buscar información nutricional de alimentos o calcular tu IMC."}
+            return {"message": "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"}
     
     if not get_ia_engine().is_ready():
         status = get_ia_engine().get_status()

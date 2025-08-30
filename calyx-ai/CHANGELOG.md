@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.5.5] - 2025-08-29
+### 🧠 Optimización MAYOR del motor de IA Phi-3
+- **Formula detection mejorada**: Detección más precisa limitada a las últimas 3 líneas (vs 10 anteriormente)
+- **Filtrado de parámetros**: Eliminación de contaminación entre cálculos sucesivos
+- **Respuestas consistentes**: Fix de respuestas "¡Hola!" incorrectas durante cálculos en progreso
+- **Detección de números**: Corrección en el parsing de inputs numéricos (altura, peso, etc.)
+- **Console blocks exclusivos**: Todos los resultados de cálculos van exclusivamente al console block
+- **Flujo IMC optimizado**: Secuencia perfecta: solicitud → parámetros → cálculo → resultado
+
+### 🎯 Experiencia de usuario mejorada
+- **Cálculos más fluidos**: Eliminadas respuestas inesperadas durante entrada de datos
+- **Mensajes contextuales**: IA responde apropiadamente según el contexto de la conversación  
+- **Resultados estructurados**: Todos los cálculos se muestran en formato organizado en console blocks
+- **Coherencia conversacional**: Fix de loops de respuestas genéricas durante fórmulas activas
+
 ## [1.4.5] - 2025-08-27
 ### 🚀 Sistema completo de auto-inicio del backend en producción
 - **Auto-inicio funcionando**: Backend se inicia automáticamente al abrir la aplicación instalada
