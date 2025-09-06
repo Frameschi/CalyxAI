@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.6.0] - 2025-09-06
+### 🤖 NUEVO MODELO: DeepSeek-R1 - Razonamiento matemático avanzado
+- **Dual-model system**: Agregado DeepSeek-R1-0528-Qwen3-8B-GGUF junto a Phi-3-Mini
+- **Modelo especializado**: DeepSeek-R1 optimizado para razonamiento matemático y cálculos médicos
+- **Switching dinámico**: Cambio fluido entre modelos según necesidades del usuario
+- **GGUF optimizado**: Implementación eficiente con Ollama para mejor rendimiento
+
+### 🚀 Optimización MAYOR de rendimiento
+- **Polling fix**: Eliminado polling excesivo del backend (reducido de múltiples timers overlap)
+- **Procesos optimizados**: Fix de 4 procesos Python duplicados ejecutándose simultáneamente
+- **ModelStatusContext**: Sistema centralizado de gestión de estado con intervalos controlados
+- **Memoria optimizada**: Reducción significativa del uso de recursos del sistema
+
+### 🎨 Mejoras de interfaz y experiencia
+- **Loading animado**: Ícono de loading rotando durante "Cambiando modelo..."
+- **Logo integration**: Reemplazado emoji ADN con logo profesional en chat
+- **UI más limpia**: Eliminadas líneas separadoras innecesarias
+- **Información dinámica**: Settings ahora muestra info del modelo actualmente activo
+- **Mensajes contextuales**: Eliminados textos hardcoded, todo dinámico según modelo activo
+
+### 🧹 Limpieza masiva del proyecto
+- **Archivos obsoletos**: Eliminados scripts de debug, tests antiguos y archivos duplicados
+- **Estructura optimizada**: Proyecto reorganizado y limpio para mejor mantenimiento
+- **Código legacy**: Removidos componentes y hooks no utilizados
+- **Gitignore actualizado**: Mejor gestión de archivos temporales y builds
+
+### 🔧 Mejoras técnicas
+- **Error handling**: Mejor manejo de errores durante cambio de modelos
+- **Estado centralizado**: Gestión unificada del estado de modelos en toda la app
+- **Performance monitoring**: Mejor tracking de procesos backend
+- **Code quality**: Refactoring general para mejor legibilidad y mantenimiento
+
 ## [1.5.5] - 2025-08-29
 ### 🧠 Optimización MAYOR del motor de IA Phi-3
 - **Formula detection mejorada**: Detección más precisa limitada a las últimas 3 líneas (vs 10 anteriormente)
