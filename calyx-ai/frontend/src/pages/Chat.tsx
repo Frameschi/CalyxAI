@@ -1,13 +1,13 @@
 
 import React, { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
+import { Send, ChevronDown } from "lucide-react";
 import { ConsoleRenderer } from "../components/ConsoleRenderer";
 import { ConsoleBlockYaml } from "../components/ConsoleBlockYaml";
 import { esBloqueYaml } from "../utils/formatConsole";
 import { Sidebar } from "../components/Sidebar";
 import { SettingsPage } from "./Settings";
 import ModelStatusIndicator from "../components/ModelStatusIndicator";
-import { useModelStatus } from "../hooks/useModelStatus";
+import { useModelStatus } from "../contexts/ModelStatusContext";
 import BackendStartupProgress from "../components/BackendStartupProgress";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -28,6 +28,9 @@ export default function Chat() {
   const [activeAnimations, setActiveAnimations] = useState(0); // Contador de animaciones activas
   const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
   const [showBackendProgress, setShowBackendProgress] = useState(true);
+  const [selectedModel, setSelectedModel] = useState("phi3-mini");
+  const [modelSwitching, setModelSwitching] = useState(false);
+  const [availableModels, setAvailableModels] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null); // Nueva referencia para el input
   
@@ -35,7 +38,7 @@ export default function Chat() {
   const { modelStatus, isLoading: modelLoading, error: modelError } = useModelStatus();
   
   // Estado combinado para deshabilitar input
-  const isProcessing = loading || activeAnimations > 0;
+  const isProcessing = loading || activeAnimations > 0 || modelSwitching;
   
   // Funciones para manejar estado de animaciones
   const handleTypingStart = () => {
@@ -46,6 +49,65 @@ export default function Chat() {
     setActiveAnimations(prev => Math.max(0, prev - 1));
   };
 
+  // Función para cargar información del modelo actual
+  const loadCurrentModel = async () => {
+    try {
+      const response = await fetch(`${API_URL}/model/current`);
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedModel(data.key);
+        setAvailableModels(data.available_models || {});
+      }
+    } catch (error) {
+      console.error("Error cargando modelo actual:", error);
+    }
+  };
+
+  // Función para cambiar modelo
+  const handleModelChange = async (newModelKey: string) => {
+    if (newModelKey === selectedModel || modelSwitching) return;
+    
+    setModelSwitching(true);
+    try {
+      const response = await fetch(`${API_URL}/model/switch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model_key: newModelKey }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedModel(newModelKey);
+        // Agregar mensaje informativo al chat
+        setMessages(prev => [...prev, {
+          from: "ai",
+          text: `Modelo cambiado a: ${availableModels[newModelKey] || newModelKey}`,
+          type: "text"
+        }]);
+      } else {
+        const errorData = await response.json();
+        console.error("Error cambiando modelo:", errorData.error);
+        // Mostrar error en el chat
+        setMessages(prev => [...prev, {
+          from: "ai", 
+          text: `Error al cambiar modelo: ${errorData.error}`,
+          type: "text"
+        }]);
+      }
+    } catch (error) {
+      console.error("Error de conexión al cambiar modelo:", error);
+      setMessages(prev => [...prev, {
+        from: "ai",
+        text: "Error de conexión al cambiar modelo. Verifica que el backend esté funcionando.",
+        type: "text"
+      }]);
+    } finally {
+      setModelSwitching(false);
+    }
+  };
+
   // Auto scroll cuando se agregan mensajes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -54,6 +116,11 @@ export default function Chat() {
   // Auto focus en el input cuando se carga la página
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  // Cargar información del modelo actual al iniciar
+  useEffect(() => {
+    loadCurrentModel();
   }, []);
 
   // Palabras clave para detectar preguntas sobre alimentos
@@ -335,12 +402,55 @@ export default function Chat() {
       
       {/* Main content area */}
       <div className="flex-1 flex flex-col ml-80">
+        {/* Selector de modelo en la parte superior */}
+        <div className="p-4">
+          <div className="flex items-center">
+            <label htmlFor="model-select" className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-3">
+              Modelo:
+            </label>
+            <div className="relative">
+              <select
+                id="model-select"
+                value={selectedModel}
+                onChange={(e) => handleModelChange(e.target.value)}
+                disabled={isProcessing}
+                className={`bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors appearance-none ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} min-w-80`}
+              >
+                {Object.entries(availableModels).map(([key, description]) => (
+                  <option key={key} value={key}>
+                    {description}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown 
+                size={16} 
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400 pointer-events-none" 
+              />
+            </div>
+            {modelSwitching && (
+              <span className="text-xs text-blue-600 dark:text-blue-400 ml-3 flex items-center gap-1">
+                <img 
+                  src="/loading.png" 
+                  alt="Loading" 
+                  className="w-3 h-3 animate-spin" 
+                />
+                Cambiando modelo...
+              </span>
+            )}
+          </div>
+        </div>
         <div className="flex-1 overflow-y-auto p-6">
         {/* Pantalla de bienvenida cuando no hay mensajes */}
         {messages.length === 0 && (
           <div className="flex-1 flex items-center justify-center min-h-96">
             <div className="text-center space-y-6 max-w-md">
-              <div className="text-4xl">🧬</div>
+              <div className="flex justify-center">
+                <img 
+                  src="/logo.png" 
+                  alt="Calyx AI Logo" 
+                  className="w-16 h-16 object-contain"
+                />
+              </div>
               <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
                 Bienvenido a Calyx AI
               </h2>
@@ -424,12 +534,14 @@ export default function Chat() {
       )}
       
       <div className="p-6 bg-transparent">
+        {/* Input de chat */}
         <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-2xl px-4 py-2 shadow-md bg-white dark:bg-gray-800 transition-colors">
           <input
             ref={inputRef}
             type="text"
             className={`flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none border-none text-base py-2 transition-colors ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             placeholder={
+              modelSwitching ? "⟳ Cambiando modelo..." :
               loading ? "Procesando respuesta..." : 
               activeAnimations > 0 ? "Desglosando cálculos..." : 
               "Escribe tu mensaje..."

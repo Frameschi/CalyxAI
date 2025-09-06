@@ -293,12 +293,31 @@ async def chat(request: Request):
         print("[LOG] /chat error: No prompt provided")
         return JSONResponse({"error": "No prompt provided"}, status_code=400)
 
-    # --- Lógica para fórmulas: pedir parámetros faltantes ---
-    import json
-    import re
-    # Cargar las fórmulas desde el JSON
-    with open("data_formulas.json", encoding="utf-8") as f:
-        formulas = json.load(f)
+    # --- Verificación rápida: ¿Es una consulta médica? ---
+    prompt_lower = prompt.lower()
+    keywords_medicos = ['imc', 'indice', 'masa', 'corporal', 'peso', 'altura', 'creatinina', 
+                       'clearance', 'superficie', 'gasto', 'cardiaco', 'presion', 'formula', 
+                       'calcular', 'calculo', 'medico', 'edad']
+    
+    es_consulta_medica = any(keyword in keywords_medicos for keyword in keywords_medicos)
+    
+    # Variables por defecto para lógica médica
+    formula_key = None
+    necesita_parametros = False
+    
+    if es_consulta_medica:
+        # --- Lógica para fórmulas: pedir parámetros faltantes ---
+        import json
+        import re
+        import os
+        
+        # Obtener el directorio del archivo actual
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        formulas_path = os.path.join(current_dir, "data_formulas.json")
+        
+        # Cargar las fórmulas desde el JSON
+        with open(formulas_path, encoding="utf-8") as f:
+            formulas = json.load(f)
 
     def detectar_formula_en_prompt(prompt, formulas):
         prompt_l = prompt.lower()
@@ -1876,9 +1895,18 @@ def get_model_status():
         
         # Verificar si el modelo está listo
         if ai_engine.is_ready():
+            # Generar mensaje dinámico según el modelo
+            model_name = ai_engine.model_name or "Modelo desconocido"
+            if "phi-3" in model_name.lower():
+                message = "Modelo Phi-3 cargado y listo para usar"
+            elif "deepseek" in model_name.lower():
+                message = "Modelo DeepSeek-R1 cargado y listo para usar"
+            else:
+                message = f"Modelo {model_name.split('/')[-1]} cargado y listo para usar"
+                
             return {
                 "status": "ready",
-                "message": "Modelo Phi-3 cargado y listo para usar",
+                "message": message,
                 "model_ready": True,
                 "model_name": ai_engine.model_name,
                 "device": ai_engine.device
@@ -2007,6 +2035,46 @@ async def download_model():
             "status": "error",
             "message": f"Error al iniciar la descarga: {str(e)}"
         }
+
+@app.get("/model/current")
+def get_current_model():
+    """Obtener información del modelo actual"""
+    try:
+        ai_engine = get_ia_engine()
+        return ai_engine.get_current_model()
+    except Exception as e:
+        return {"error": f"Error al obtener información del modelo: {str(e)}"}
+
+@app.post("/model/switch")
+async def switch_model(request: Request):
+    """Cambiar entre modelos disponibles"""
+    try:
+        data = await request.json()
+        model_key = data.get("model_key")
+        
+        if not model_key:
+            return JSONResponse({"error": "model_key es requerido"}, status_code=400)
+        
+        ai_engine = get_ia_engine()
+        success = ai_engine.switch_model(model_key)
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Modelo cambiado a '{model_key}' exitosamente",
+                "current_model": ai_engine.get_current_model()
+            }
+        else:
+            return JSONResponse({
+                "error": f"Error al cargar el modelo '{model_key}'"
+            }, status_code=500)
+            
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({
+            "error": f"Error interno: {str(e)}"
+        }, status_code=500)
 
 @app.get("/model/download/progress")
 async def get_download_progress():

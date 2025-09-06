@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useModelStatus } from '../contexts/ModelStatusContext';
 
 interface BackendStartupStatus {
   status: 'starting' | 'dependencies' | 'loading_model' | 'ready' | 'error';
@@ -23,9 +24,26 @@ const BackendStartupProgress: React.FC<BackendStartupProgressProps> = ({
   const [hasError, setHasError] = useState(false);
   const [attemptCount, setAttemptCount] = useState(0);
   const [startTime] = useState(Date.now());
+  
+  // Usar el contexto del modelo para coordinarse
+  const { modelStatus } = useModelStatus();
 
   const checkStartupProgress = async () => {
     try {
+      // Primer intento: usar el estado del modelo si está disponible
+      if (modelStatus?.status === 'ready') {
+        setStartupStatus({
+          status: 'ready',
+          progress_percentage: 100,
+          current_step: 'Sistema listo',
+          current_step_number: 4,
+          total_steps: 4
+        });
+        onReady?.();
+        setTimeout(() => setIsVisible(false), 1000);
+        return;
+      }
+
       const response = await fetch('http://localhost:8000/backend/startup/progress', {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
@@ -41,7 +59,7 @@ const BackendStartupProgress: React.FC<BackendStartupProgressProps> = ({
         // Si está listo, notificar y ocultar después de un momento
         if (data.status === 'ready') {
           onReady?.();
-          setTimeout(() => setIsVisible(false), 2000);
+          setTimeout(() => setIsVisible(false), 1000);
         }
       } else {
         throw new Error('Backend no disponible');
@@ -80,12 +98,34 @@ const BackendStartupProgress: React.FC<BackendStartupProgressProps> = ({
   };
 
   useEffect(() => {
+    // Si el modelo ya está listo desde el contexto, no hacer nada más
+    if (modelStatus?.status === 'ready') {
+      setStartupStatus({
+        status: 'ready',
+        progress_percentage: 100,
+        current_step: 'Sistema listo',
+        current_step_number: 4,
+        total_steps: 4
+      });
+      onReady?.();
+      setTimeout(() => setIsVisible(false), 1000);
+      return;
+    }
+    
+    // Solo hacer una verificación inicial, sin polling constante
     checkStartupProgress();
     
-    const interval = setInterval(checkStartupProgress, 2000);
+    // Si el modelo no está listo después de 10 segundos, hacer una verificación más
+    const timeoutId = setTimeout(() => {
+      if (modelStatus?.status !== 'ready') {
+        checkStartupProgress();
+      }
+    }, 10000);
     
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [modelStatus?.status]); // Solo reaccionar a cambios en el estado del modelo
 
   if (!isVisible || (!startupStatus && !hasError)) {
     return null;

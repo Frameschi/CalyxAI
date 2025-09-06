@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useModelStatus } from '../contexts/ModelStatusContext';
 import ModelStatusIndicator from '../components/ModelStatusIndicator';
 
 interface SettingsPageProps {
@@ -9,6 +10,42 @@ interface SettingsPageProps {
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
   const { isDarkMode, toggleTheme } = useTheme();
+  const { modelStatus } = useModelStatus();
+
+  // Función para obtener información del modelo actual
+  const getModelInfo = () => {
+    if (!modelStatus) {
+      return {
+        name: 'Cargando...',
+        description: 'Obteniendo información del modelo...',
+        isLocal: true
+      };
+    }
+
+    const modelName = modelStatus.model_name || 'Modelo desconocido';
+    
+    if (modelName.includes('phi-3') || modelName.includes('Phi-3')) {
+      return {
+        name: 'Phi-3-mini-4k-instruct',
+        description: 'Calyx AI utiliza el modelo Phi-3-mini-4k-instruct de Microsoft, que se ejecuta completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.',
+        isLocal: true
+      };
+    } else if (modelName.includes('deepseek') || modelName.includes('DeepSeek')) {
+      return {
+        name: 'DeepSeek-R1-0528-Qwen3-8B-GGUF',
+        description: 'Calyx AI utiliza el modelo DeepSeek-R1 cuantizado en formato GGUF, que se ejecuta completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.',
+        isLocal: true
+      };
+    } else {
+      return {
+        name: modelName,
+        description: 'Este modelo se ejecuta completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.',
+        isLocal: true
+      };
+    }
+  };
+
+  const modelInfo = getModelInfo();
 
   return (
     <div className="flex flex-col h-screen bg-white dark:bg-gray-900 transition-colors">
@@ -93,8 +130,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
                   💡 Información sobre el modelo
                 </p>
                 <p>
-                  Calyx AI utiliza el modelo Phi-3-mini-4k-instruct de Microsoft, que se ejecuta 
-                  completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.
+                  {modelInfo.description}
                 </p>
               </div>
             </div>
@@ -114,7 +150,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
               
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Modelo de IA</span>
-                <span className="text-gray-900 dark:text-white font-medium">Phi-3-mini-4k-instruct (Local)</span>
+                <span className="text-gray-900 dark:text-white font-medium">
+                  {modelInfo.name} {modelInfo.isLocal ? '(Local)' : ''}
+                </span>
               </div>
               
               <div className="flex justify-between">

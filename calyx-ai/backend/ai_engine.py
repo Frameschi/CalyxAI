@@ -2,18 +2,50 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer, logging, BitsAndBytesConfig
 import torch
 import os
+import ollama
 
 class IAEngine:
     def __init__(self, model_name=None):
-        self.model_name = model_name or os.getenv("PHI3_MODEL_NAME", "microsoft/phi-3-mini-4k-instruct")
+        # Configuración de modelos disponibles
+        self.available_models = {
+            "phi3-mini": {
+                "name": "microsoft/phi-3-mini-4k-instruct",
+                "engine": "huggingface",
+                "description": "Phi-3 Mini - Rápido y eficiente"
+            },
+            "deepseek-r1": {
+                "name": "hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q4_K_M",
+                "engine": "ollama", 
+                "description": "DeepSeek-R1 - Razonamiento matemático avanzado"
+            }
+        }
+        
+        # Modelo por defecto
+        self.current_model_key = "phi3-mini"
+        current_model_config = self.available_models[self.current_model_key]
+        self.model_name = model_name or current_model_config["name"]
+        self.current_engine = current_model_config["engine"]
+        
+        # Engines
         self.tokenizer = None
         self.model = None
         self.model_error = None
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.ollama_client = None
+        
         self._load_model()
 
     def _load_model(self):
+        if self.current_engine == "huggingface":
+            self._load_huggingface_model()
+        elif self.current_engine == "ollama":
+            self._load_ollama_model()
+        else:
+            self.model_error = f"Engine no soportado: {self.current_engine}"
+
+    def _load_huggingface_model(self):
         logging.set_verbosity_info()
+        print(f"[IAEngine] Cargando modelo HuggingFace: {self.model_name}")
         print(f"[IAEngine] torch.cuda.is_available(): {torch.cuda.is_available()}")
         if torch.cuda.is_available():
             print(f"[IAEngine] GPU detectada: {torch.cuda.get_device_name(0)}")
@@ -86,10 +118,48 @@ class IAEngine:
                 print("[IAEngine] Modelo cargado en CPU.")
         except Exception as e:
             self.model_error = str(e)
-            print(f"[IAEngine] Error al cargar el modelo: {self.model_error}")
+            print(f"[IAEngine] Error al cargar el modelo HuggingFace: {self.model_error}")
+
+    def _load_ollama_model(self):
+        print(f"[IAEngine] Inicializando cliente Ollama para: {self.model_name}")
+        try:
+            self.ollama_client = ollama.Client()
+            
+            # Verificar si el modelo está disponible
+            try:
+                models = self.ollama_client.list()
+                model_names = [model.model for model in models.models]
+                
+                if self.model_name not in model_names:
+                    print(f"[IAEngine] Modelo {self.model_name} no encontrado. Intentando descarga...")
+                    print("[IAEngine] Esto puede tomar varios minutos...")
+                    self.ollama_client.pull(self.model_name)
+                    print(f"[IAEngine] Modelo {self.model_name} descargado exitosamente")
+                else:
+                    print(f"[IAEngine] Modelo {self.model_name} ya disponible")
+                
+                # Test del modelo
+                test_response = self.ollama_client.chat(
+                    model=self.model_name,
+                    messages=[{'role': 'user', 'content': 'Test'}],
+                    options={'num_predict': 5}
+                )
+                print("[IAEngine] Cliente Ollama inicializado correctamente")
+                
+            except Exception as e:
+                self.model_error = f"Error al verificar/descargar modelo Ollama: {str(e)}"
+                print(f"[IAEngine] {self.model_error}")
+                
+        except Exception as e:
+            self.model_error = f"Error al conectar con Ollama: {str(e)}"
+            print(f"[IAEngine] {self.model_error}")
 
     def is_ready(self):
-        return self.model is not None and self.tokenizer is not None and self.model_error is None
+        if self.current_engine == "huggingface":
+            return self.model is not None and self.tokenizer is not None and self.model_error is None
+        elif self.current_engine == "ollama":
+            return self.ollama_client is not None and self.model_error is None
+        return False
 
     def is_model_downloaded(self):
         """Verificar si el modelo está descargado en el cache local"""
@@ -180,16 +250,22 @@ class IAEngine:
 
     def generate(self, prompt, max_new_tokens=120, temperature=0.3):
         """
-        Generación optimizada para asistente nutricional:
-        - max_new_tokens=120: Respuestas más completas pero concisas
-        - temperature=0.3: Más consistente, menos aleatoriedad
-        - timeout=15s: Más tiempo para respuestas de calidad
+        Generación optimizada para asistente nutricional usando el engine apropiado
         """
-        import threading
-        import time
-        
         if not self.is_ready():
             raise RuntimeError("El modelo no está listo o falló la carga.")
+        
+        if self.current_engine == "huggingface":
+            return self._generate_huggingface(prompt, max_new_tokens, temperature)
+        elif self.current_engine == "ollama":
+            return self._generate_ollama(prompt, max_new_tokens, temperature)
+        else:
+            raise RuntimeError(f"Engine no soportado: {self.current_engine}")
+
+    def _generate_huggingface(self, prompt, max_new_tokens=120, temperature=0.3):
+        """Generación usando HuggingFace (Phi-3)"""
+        import threading
+        import time
         
         # Variable para almacenar resultado
         result = {"response": None, "error": None}
@@ -229,9 +305,90 @@ class IAEngine:
             response = "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
         else:
             response = result["response"]
+        
         # Limpiar respuesta: eliminar eco del prompt si lo hay
         if response.lower().startswith(prompt.lower()):
             response = response[len(prompt):].lstrip("\n :.-")
         # Limitar a 3 líneas para mayor naturalidad
         response = "\n".join(response.splitlines()[:3]).strip()
         return response
+
+    def _generate_ollama(self, prompt, max_new_tokens=120, temperature=0.3):
+        """Generación usando Ollama (DeepSeek-R1)"""
+        try:
+            # Configurar opciones de generación para Ollama
+            options = {
+                'num_predict': max_new_tokens,
+                'temperature': temperature,
+                'top_p': 0.9,
+                'top_k': 50,
+                'repeat_penalty': 1.2
+            }
+            
+            response = self.ollama_client.chat(
+                model=self.model_name,
+                messages=[
+                    {'role': 'user', 'content': prompt}
+                ],
+                options=options
+            )
+            
+            # Extraer el contenido de la respuesta
+            message_content = response.get('message', {}).get('content', '')
+            
+            # Limitar a 3 líneas para consistencia
+            lines = message_content.strip().split('\n')
+            if len(lines) > 3:
+                message_content = '\n'.join(lines[:3])
+            
+            return message_content.strip()
+            
+        except Exception as e:
+            print(f"[IAEngine] Error en generación Ollama: {e}")
+            return "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
+
+    def switch_model(self, model_key):
+        """Cambiar entre modelos disponibles"""
+        if model_key not in self.available_models:
+            raise ValueError(f"Modelo '{model_key}' no disponible. Opciones: {list(self.available_models.keys())}")
+        
+        if model_key == self.current_model_key:
+            print(f"[IAEngine] Modelo '{model_key}' ya está cargado")
+            return True
+        
+        print(f"[IAEngine] Cambiando de '{self.current_model_key}' a '{model_key}'...")
+        
+        # Limpiar modelo actual de memoria
+        if self.current_engine == "huggingface" and self.model is not None:
+            del self.model
+            del self.tokenizer
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        elif self.current_engine == "ollama":
+            self.ollama_client = None
+        
+        # Configurar nuevo modelo
+        new_model_config = self.available_models[model_key]
+        self.current_model_key = model_key
+        self.model_name = new_model_config["name"]
+        self.current_engine = new_model_config["engine"]
+        
+        # Reset variables
+        self.model = None
+        self.tokenizer = None
+        self.ollama_client = None
+        self.model_error = None
+        
+        self._load_model()
+        return self.is_ready()
+    
+    def get_current_model(self):
+        """Obtener información del modelo actual"""
+        model_info = self.available_models[self.current_model_key].copy()
+        model_info.update({
+            "key": self.current_model_key,
+            "engine": self.current_engine,
+            "is_ready": self.is_ready(),
+            "available_models": {k: v["description"] for k, v in self.available_models.items()}
+        })
+        return model_info

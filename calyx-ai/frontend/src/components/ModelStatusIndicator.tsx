@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useModelStatus } from '../hooks/useModelStatus';
+import { useModelStatus } from '../contexts/ModelStatusContext';
 import ModelDownloadSplash from './ModelDownloadSplash';
 import LoadingSpinner from './LoadingSpinner';
 
