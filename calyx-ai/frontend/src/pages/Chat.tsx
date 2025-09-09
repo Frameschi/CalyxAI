@@ -486,10 +486,10 @@ export default function Chat() {
         {/* Pantalla de bienvenida cuando no hay mensajes */}
         {messages.length === 0 && (
           <div className="flex-1 flex items-center justify-center min-h-96">
-            <div className="text-center space-y-6 max-w-md">
-              {/* ORB CENTRAL - ARRIBA del título */}
+            <div className="text-center space-y-6 max-w-md relative">
+              {/* ORB CENTRAL - alineado y centrado arriba del título */}
               {!showBackendProgress && !modelError && showCenterOrb && (
-                <div className="flex justify-center mb-6">
+                <div style={{ position: 'absolute', left: '50%', top: '40px', transform: 'translateX(-50%)' }}>
                   <AiOrb 
                     size="large" 
                     isActive={modelSwitching}
@@ -498,12 +498,12 @@ export default function Chat() {
                   />
                 </div>
               )}
-              <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
+              <h2
+                className="text-4xl font-extrabold text-gray-800 dark:text-white"
+                style={{ marginTop: '100px', fontFamily: 'Cormorant Garamond, serif', fontWeight: 800, letterSpacing: '0.01em' }}
+              >
                 Bienvenido a Calyx AI
               </h2>
-              <p className="text-gray-600 dark:text-gray-300">
-                Asistente de cálculos médicos con IA local
-              </p>
               {/* Mostrar progreso del backend si está iniciándose */}
               {showBackendProgress && (
                 <BackendStartupProgress 
