@@ -9,6 +9,7 @@ import { SettingsPage } from "./Settings";
 import { useModelStatus } from "../contexts/ModelStatusContext";
 import BackendStartupProgress from "../components/BackendStartupProgress";
 import ThinkingDropdown from "../components/ThinkingDropdown";
+import AiOrb from "../components/AiOrb";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -438,7 +439,7 @@ export default function Chat() {
                 <img 
                   src="/loading.png" 
                   alt="Loading" 
-                  className="w-3 h-3 animate-spin" 
+                  className="w-4 h-4 animate-spin" 
                 />
                 Cambiando modelo...
               </span>
@@ -481,6 +482,20 @@ export default function Chat() {
                 </div>
               )}
               
+              {/* Orb inicial con mensaje de bienvenida al estilo Claude */}
+              {!showBackendProgress && !modelError && (
+                <div className="flex items-start justify-start max-w-4xl mx-auto mt-8">
+                  <div className="mr-3 mt-1 flex-shrink-0">
+                    <AiOrb size="medium" isActive={false} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-gray-600 dark:text-gray-300">
+                      ¿En qué puedo asistirte hoy?
+                    </p>
+                  </div>
+                </div>
+              )}
+              
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Escribe tu consulta médica para comenzar
               </p>
@@ -504,33 +519,56 @@ export default function Chat() {
             return <ConsoleBlockYaml key={i} input={msg.text} />;
           } else if (msg.type === "console") {
             return (
-              <div key={i} className="mb-4 flex justify-start">
-                <ConsoleRenderer 
-                  title={msg.title} 
-                  input={msg.input} 
-                  output={msg.output} 
-                  onTypingStart={handleTypingStart}
-                  onTypingEnd={handleTypingEnd}
-                />
+              <div key={i} className="mb-4">
+                <div className="flex justify-start">
+                  <ConsoleRenderer 
+                    title={msg.title} 
+                    input={msg.input} 
+                    output={msg.output} 
+                    onTypingStart={handleTypingStart}
+                    onTypingEnd={handleTypingEnd}
+                  />
+                </div>
+                {/* SIN ORB AQUÍ - movido al final */}
               </div>
             );
           } else {
             return (
-              <div key={i} className="mb-4 flex justify-start">
-                <div className="max-w-4xl">
-                  {/* Mostrar ThinkingDropdown solo si hay thinking content */}
-                  {msg.thinking && (
-                    <ThinkingDropdown 
-                      thinking={msg.thinking} 
-                      className="mb-2" 
-                    />
-                  )}
-                  <ConsoleRenderer text={msg.text} />
+              <div key={i} className="mb-4">
+                <div className="flex justify-start">
+                  <div className="max-w-4xl">
+                    {/* Mostrar ThinkingDropdown solo si hay thinking content */}
+                    {msg.thinking && (
+                      <ThinkingDropdown 
+                        thinking={msg.thinking} 
+                        className="mb-2" 
+                      />
+                    )}
+                    <ConsoleRenderer text={msg.text} />
+                  </div>
                 </div>
+                {/* SIN ORB AQUÍ - movido al final */}
               </div>
             );
           }
         })}
+        
+        {/* ÚNICO ORB - reacciona a todo: loading, typing, thinking */}
+        {isProcessing && (
+          <div className="mb-4 flex justify-start items-start">
+            <div className="mr-3 mt-1 flex-shrink-0">
+              <AiOrb size="medium" isActive={true} />
+            </div>
+            {loading && (
+              <div className="max-w-4xl">
+                <div className="text-gray-500 dark:text-gray-400 italic">
+                  {selectedModel === 'deepseek-r1' ? "🧬 Analizando con razonamiento avanzado..." : "Procesando respuesta..."}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
       
