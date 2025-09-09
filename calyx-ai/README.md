@@ -1,13 +1,15 @@
 
 # Calyx AI
 
-Calyx AI es una aplicación de nutrición inteligente que funciona completamente de forma local, combinando una interfaz moderna (Electron + React) con un backend robusto (FastAPI + modelo Phi-3-Mini-4K-Instruct en GPU y SQLite). Permite consultas de alimentos, cálculos nutricionales automáticos y chat asistente general, sin depender de la nube.
+Calyx AI es una aplicación de nutrición inteligente que funciona completamente de forma local, combinando una interfaz moderna (Electron + React) con un backend robusto (FastAPI + **sistema dual de modelos IA** optimizado para GPU). Permite consultas de alimentos, cálculos nutricionales automáticos y chat asistente general con **capacidades de razonamiento avanzado**, sin depender de la nube.
 
 ## Objetivo
-Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, privada y sin conexión, ideal para profesionales, estudiantes y usuarios preocupados por su alimentación.
+Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, privada y sin conexión, ideal para profesionales, estudiantes y usuarios preocupados por su alimentación, con **análisis profundo** y **transparencia en el proceso de pensamiento**.
 
-## Características
-- Chat con IA local (modelo Phi-3 Mini 4K Instruct, 4-bit, GPU)
+## Características principales
+- **Dual AI System**: Phi-3-Mini (rápido) + **DeepSeek-R1** (razonamiento profundo)
+- **🧠 Thinking Transparency**: Dropdown estilo ChatGPT mostrando el proceso de razonamiento completo
+- **⚡ GPU Optimizado**: 42%/58% CPU/GPU balance para máximo rendimiento
 - **Cálculos automáticos de fórmulas nutricionales** (IMC, Composición Corporal, TMB, etc.)
 - **Separación inteligente de fórmulas médicas** - No interfieren entre sí
 - **Recolección progresiva de parámetros** - Conversaciones naturales para obtener datos

@@ -41,6 +41,17 @@ def get_ia_engine():
         print("[DEBUG] Usando instancia global de IAEngine existente")
     return ia_engine
 
+def get_fallback_message():
+    """Obtiene mensaje de fallback según el modelo activo"""
+    try:
+        ia_engine = get_ia_engine()
+        if hasattr(ia_engine, 'current_model_key') and ia_engine.current_model_key == 'deepseek-r1':
+            return "🧬 DeepSeek Nutrición Avanzada activado. Capacidad de análisis profundo y razonamiento nutricional disponible. ¿Qué consulta nutricional puedo analizar para ti?"
+        else:
+            return "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
+    except:
+        return "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
+
 @app.on_event("startup")
 async def startup_event():
     """Evento que se ejecuta al iniciar el servidor - Carga automática del modelo"""
@@ -792,9 +803,8 @@ async def chat(request: Request):
     print(f"[DEBUG CRÍTICO] Formula detectada: {formula_key}")
     print(f"[DEBUG CRÍTICO] Formula objeto: {formula.get('nombre') if formula else 'None'}")
     
-    # *** CRÍTICO: PRIORIDAD ABSOLUTA PARA MENSAJES SIMPLES ***
-    # Si detectar_formula_en_prompt retorna None, None significa mensaje no relacionado
-    # FORZAR respuesta inmediata sin continuar con lógica de fórmulas
+    # *** FALLBACK RÁPIDO SOLO PARA SALUDOS ESPECÍFICOS ***
+    # Si detectar_formula_en_prompt retorna None, verificar si es un saludo simple
     if formula_key is None and formula is None:
         lineas = prompt.strip().split('\n')
         ultimo_mensaje = ""
@@ -805,18 +815,20 @@ async def chat(request: Request):
                     ultimo_mensaje = ultimo_mensaje[5:].strip()
                 break
 
-        print(f"[DEBUG] MENSAJE SIMPLE DETECTADO - RETORNANDO INMEDIATAMENTE: '{ultimo_mensaje}'")
-        
-        # Determinar tipo de respuesta
-        if re.search(r"\b(hola|hello|hi|buenas|buenos días|buenas tardes)\b", ultimo_mensaje, re.IGNORECASE):
-            return {"message": "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?", "console_block": None}
-        elif re.search(r"\b(¿cómo estás|como estas|¿como estas|cómo estás|how are you|¿qué tal|que tal)\b", ultimo_mensaje, re.IGNORECASE):
+        # SOLO para saludos simples - NO para consultas nutricionales
+        saludos_exactos = ["hola", "hello", "hi", "buenas", "buenos días", "buenas tardes", "buenas noches"]
+        if ultimo_mensaje in saludos_exactos:
+            print(f"[DEBUG] Saludo simple detectado - FALLBACK: '{ultimo_mensaje}'")
+            return {"message": get_fallback_message(), "console_block": None}
+        elif re.search(r"^(¿cómo estás|como estas|¿como estas|cómo estás|how are you|¿qué tal|que tal)$", ultimo_mensaje, re.IGNORECASE):
             return {"message": "¡Estoy muy bien, gracias por preguntar! ¿En qué puedo ayudarte hoy?", "console_block": None}
-        elif re.search(r"\b(gracias|thank you|thanks|genial|excelente|perfecto|muy bien)\b", ultimo_mensaje, re.IGNORECASE):
+        elif re.search(r"^(gracias|thank you|thanks)$", ultimo_mensaje, re.IGNORECASE):
             return {"message": "¡De nada! ¿Hay algo más en lo que pueda ayudarte?", "console_block": None}
-        elif re.search(r"\b(adiós|adios|bye|hasta luego|nos vemos|chao|hasta pronto|buenas noches|seria todo|sería todo|es todo)\b", ultimo_mensaje, re.IGNORECASE):
+        elif re.search(r"^(adiós|adios|bye|hasta luego|nos vemos|chao|hasta pronto|buenas noches)$", ultimo_mensaje, re.IGNORECASE):
             return {"message": "¡Hasta luego! Que tengas un excelente día. Estoy aquí cuando necesites ayuda nutricional.", "console_block": None}
-        # Para otros mensajes, no hacer return - continuar al procesamiento de IA normal
+        
+        # Para consultas nutricionales (no saludos), continuar al procesamiento de IA normal
+        print(f"[DEBUG] Consulta nutricional detectada - ENVIAR AL MODELO: '{ultimo_mensaje}'")
     
     # *** SOLO CONTINUAR SI HAY FÓRMULA DETECTADA ***
     if not formula:
@@ -1531,6 +1543,57 @@ async def chat(request: Request):
         # Elegir un saludo aleatorio diferente cada vez
         return random.choice(SALUDOS_VARIADOS)
 
+    def limpiar_respuesta_deepseek(respuesta: str) -> dict:
+        """Separar razonamiento de respuesta para DeepSeek-R1"""
+        import re
+        
+        # Extraer bloque de razonamiento <think>
+        think_pattern = r'<think>(.*?)</think>(.*)'
+        match = re.search(think_pattern, respuesta, re.DOTALL)
+        
+        thinking_content = None
+        respuesta_limpia = respuesta
+        
+        if match:
+            thinking_content = match.group(1).strip()
+            respuesta_limpia = match.group(2).strip()
+            
+            # Si hay poco contenido después del think, usar respuesta completa
+            if len(respuesta_limpia) < 50:
+                # Buscar si hay contenido útil en el thinking
+                if len(thinking_content) > 100:
+                    respuesta_limpia = "Análisis completado. La información detallada está disponible en el razonamiento."
+        else:
+            # Si no hay estructura <think>, buscar patrones de razonamiento al inicio
+            if respuesta.strip().lower().startswith(('vale,', 'ah,', 'el usuario', 'la pregunta')):
+                # Probable razonamiento sin etiquetas
+                lines = respuesta.split('\n')
+                # Tomar primeras líneas como thinking y resto como respuesta
+                if len(lines) > 3:
+                    thinking_content = '\n'.join(lines[:3])
+                    respuesta_limpia = '\n'.join(lines[3:]).strip()
+        
+        # Limpiar respuesta final
+        if respuesta_limpia:
+            # Eliminar frases introductorias innecesarias
+            frases_eliminar = [
+                r"¡Hola! 😊\s*",
+                r"A continuación.*?:",
+                r"Recordemos que.*?",
+            ]
+            
+            for patron in frases_eliminar:
+                respuesta_limpia = re.sub(patron, '', respuesta_limpia, flags=re.DOTALL | re.IGNORECASE)
+            
+            # Limpiar líneas vacías múltiples
+            respuesta_limpia = re.sub(r'\n\s*\n\s*\n', '\n\n', respuesta_limpia)
+            respuesta_limpia = respuesta_limpia.strip()
+        
+        return {
+            "respuesta": respuesta_limpia or "No se pudo generar una respuesta clara.",
+            "thinking": thinking_content
+        }
+
     def postprocesar_respuesta(user_input: str, respuesta: str) -> str:
         if es_solo_salida_reflejo(user_input, respuesta) and respuesta_es_solo_saludo(user_input):
             return respuesta_para_saludo(user_input)
@@ -1677,26 +1740,45 @@ async def chat(request: Request):
         mas_comun = rows[0]
         alimento_dict = dict(zip(columns, mas_comun))
         nombre_alimento = alimento_dict.get('alimento', alimento_mencionado)
-        contexto_nutricional = f"\nInformación nutricional de {nombre_alimento}:\n"
-        if "alimento" in alimento_dict:
-            contexto_nutricional += f"• Alimento: {nombre_alimento}\n"
+        
+        # Construir contexto EXPLÍCITO con datos exactos
+        contexto_nutricional = f"\n=== DATOS EXACTOS DE LA BASE DE DATOS ===\n"
+        contexto_nutricional += f"ALIMENTO: {nombre_alimento}\n"
+        contexto_nutricional += f"FUENTE: Base de datos verificada CalyxAI\n\n"
+        
+        # Incluir SOLO los datos disponibles con valores exactos
+        datos_disponibles = []
         campos_valores = {}
+        
         for campo, etiqueta in [
             ("cantidad", "Cantidad"),
-            ("peso bruto (g)", "Cantidad"),
-            ("peso neto (g)", "Cantidad"),
+            ("peso bruto (g)", "Peso bruto"),  
+            ("peso neto (g)", "Peso neto"),
             ("energia (kcal)", "Energía"),
             ("calorias", "Energía"),
             ("proteina (g)", "Proteína"),
+            ("lipidos (g)", "Lípidos"),
+            ("carbohidratos (g)", "Carbohidratos"),
             ("fibra (g)", "Fibra"),
         ]:
-            if campo in alimento_dict:
-                contexto_nutricional += f"• {etiqueta}: {alimento_dict[campo]}\n"
-                campos_valores[etiqueta] = alimento_dict[campo]
+            if campo in alimento_dict and alimento_dict[campo] is not None:
+                valor = alimento_dict[campo]
+                datos_disponibles.append(f"{etiqueta}: {valor}")
+                campos_valores[etiqueta] = valor
+        
+        contexto_nutricional += "VALORES NUTRICIONALES EXACTOS:\n"
+        for dato in datos_disponibles:
+            contexto_nutricional += f"• {dato}\n"
+        
         if "completa" in prompt.lower():
+            contexto_nutricional += "\nDATOS ADICIONALES DISPONIBLES:\n"
             for k, v in alimento_dict.items():
-                if k.lower() != "id" and k.lower() not in ["alimento", "cantidad", "peso bruto (g)", "peso neto (g)", "energia (kcal)", "calorias", "proteina (g)", "fibra (g)"]:
+                if (k.lower() not in ["id", "alimento", "cantidad", "peso bruto (g)", "peso neto (g)", 
+                                     "energia (kcal)", "calorias", "proteina (g)", "lipidos (g)", 
+                                     "carbohidratos (g)", "fibra (g)"] and v is not None):
                     contexto_nutricional += f"• {k.title()}: {v}\n"
+        
+        contexto_nutricional += f"\nUSA ÚNICAMENTE ESTOS VALORES. NO INVENTES DATOS.\n"
         import re
         match_cant = re.search(r"(\d+(?:[\.,]\d+)?)(\s*)(g|gramos|kg|kilos|ml|l|litros|mg)?\s+de\s+(.+)", prompt.lower())
         if match_cant:
@@ -1726,47 +1808,85 @@ async def chat(request: Request):
                         proteina = round(float(str(alimento_dict[k]).replace(",",".").split()[0]) * factor, 2)
                     except:
                         pass
-            contexto_nutricional += f"\nCálculo proporcional para {cantidad_usuario} {unidad_usuario} de {nombre_alimento}:\n"
+            contexto_nutricional += f"\nCÁLCULO PROPORCIONAL para {cantidad_usuario} {unidad_usuario}:\n"
             if energia is not None:
-                contexto_nutricional += f"➡ Energía: {energia} kcal\n"
+                contexto_nutricional += f"➡ Energía calculada: {energia} kcal\n"
             if proteina is not None:
-                contexto_nutricional += f"➡ Proteína: {proteina} g\n"
-        contexto_nutricional += "\nResponde solo usando estos datos. Si falta información, indícalo con honestidad.\n"
+                contexto_nutricional += f"➡ Proteína calculada: {proteina} g\n"
+        
+        contexto_nutricional += "\n⚠️ INSTRUCCIÓN CRÍTICA: Usa ÚNICAMENTE estos valores exactos. NO inventes otros datos.\n"
+        
     elif es_nutricion:
-        contexto_nutricional = "\nResponde solo con información nutricional basada en la base de datos proporcionada. Si no tienes datos, indica que no puedes responder con precisión.\n"
-    # Si no es tema de nutrición, no agregar contexto nutricional
-    elif es_nutricion:
-        contexto_nutricional = "\nResponde solo con información nutricional basada en la base de datos proporcionada. Si no tienes datos, indica que no puedes responder con precisión.\n"
-    # Si no es tema de nutrición, no agregar contexto nutricional
+        contexto_nutricional = "\n⚠️ No se encontraron datos específicos en la base de datos. Indica que no tienes información precisa sobre este alimento.\n"
 
-    # Instrucción de sistema optimizada para Phi-3 como asistente nutricional
-    system_instruction = (
-        "<|system|>\n"
-        "Eres Calyx AI, un asistente nutricional especializado y directo.\n\n"
+    def get_system_instruction(contexto_nutricional=""):
+        """Genera el prompt del sistema según el modelo activo"""
+        ia_engine = get_ia_engine()
+        current_model_key = getattr(ia_engine, 'current_model_key', 'phi3-mini')
         
-        "**TU MISIÓN:**\n"
-        "1. Responder preguntas sobre nutrición y alimentos\n"
-        "2. Realizar cálculos médicos cuando se soliciten\n"
-        "3. Mantener conversación profesional y útil\n\n"
-        
-        "**REGLAS ESTRICTAS:**\n"
-        "- RESPUESTAS CORTAS: Máximo 2-3 líneas\n"
-        "- SIN REPETIR: No repitas la pregunta del usuario\n"
-        "- SIN INVENTAR: Solo datos reales de la base de datos\n"
-        "- SIN RELLENO: Directo al punto, sin frases innecesarias\n"
-        "- EN ESPAÑOL: Siempre responde en español\n\n"
-        
-        "**EJEMPLOS DE RESPUESTAS CORRECTAS:**\n"
-        "Pregunta: '¿Qué nutrientes tiene la manzana?'\n"
-        "Respuesta: 'La manzana aporta 52 kcal por 100g, 0.3g proteínas, 13.8g carbohidratos y 2.4g fibra.'\n\n"
-        
-        "Pregunta: '¿Cómo estás?'\n"
-        "Respuesta: 'Muy bien, gracias. ¿En qué puedo ayudarte con nutrición?'\n\n"
-        
-        f"{contexto_nutricional}\n"
-        
-        "Sé útil, preciso y conciso.\n"
-    )
+        if current_model_key == 'deepseek-r1':
+            # Prompt optimizado para DeepSeek-R1 - FORZAR RESPUESTA DESPUÉS DE ANÁLISIS
+            return (
+                "<|system|>\n"
+                "# CALYX AI - NUTRICIÓN CON DATOS EXACTOS\n\n"
+                
+                "## PROTOCOLO OBLIGATORIO\n"
+                "1. **ANÁLISIS BREVE**: Máximo 2-3 líneas de pensamiento interno\n"
+                "2. **RESPUESTA OBLIGATORIA**: SIEMPRE proporcionar respuesta práctica después del análisis\n"
+                "3. **DATOS VERIFICADOS**: Solo usar valores exactos de la base de datos\n"
+                "4. **ESTRUCTURA**: <think>análisis breve</think> + RESPUESTA DIRECTA\n\n"
+                
+                "## REGLAS CRÍTICAS PARA DATOS NUTRICIONALES\n"
+                "- Si el contexto dice 'Energía: 52 kcal', usar EXACTAMENTE 52 kcal\n"
+                "- Si el contexto dice 'Proteína: 0.3 g', usar EXACTAMENTE 0.3 g\n"
+                "- PROHIBIDO inventar valores no proporcionados\n"
+                "- Si falta un dato: 'No disponible en la base de datos'\n\n"
+                
+                "## FORMATO OBLIGATORIO\n"
+                "Después de tu análisis breve, SIEMPRE responder con:\n"
+                "```\n"
+                "Información nutricional de [alimento] (datos exactos de BD):\n"
+                "• Energía: [valor exacto]\n"
+                "• Proteína: [valor exacto]\n"
+                "• [otros nutrientes disponibles]\n"
+                "```\n\n"
+                
+                f"{contexto_nutricional}\n"
+                
+                "CRÍTICO: Después de pensar brevemente, GENERAR RESPUESTA COMPLETA con datos exactos.\n"
+            )
+        else:
+            # Prompt optimizado para Phi-3 (simple y directo)
+            return (
+                "<|system|>\n"
+                "Eres Calyx AI, un asistente nutricional especializado y directo.\n\n"
+                
+                "**TU MISIÓN:**\n"
+                "1. Responder preguntas sobre nutrición y alimentos\n"
+                "2. Realizar cálculos médicos cuando se soliciten\n"
+                "3. Mantener conversación profesional y útil\n\n"
+                
+                "**REGLAS ESTRICTAS:**\n"
+                "- RESPUESTAS CORTAS: Máximo 2-3 líneas\n"
+                "- SIN REPETIR: No repitas la pregunta del usuario\n"
+                "- SIN INVENTAR: Solo datos reales de la base de datos\n"
+                "- SIN RELLENO: Directo al punto, sin frases innecesarias\n"
+                "- EN ESPAÑOL: Siempre responde en español\n\n"
+                
+                "**EJEMPLOS DE RESPUESTAS CORRECTAS:**\n"
+                "Pregunta: '¿Qué nutrientes tiene la manzana?'\n"
+                "Respuesta: 'La manzana aporta 52 kcal por 100g, 0.3g proteínas, 13.8g carbohidratos y 2.4g fibra.'\n\n"
+                
+                "Pregunta: '¿Cómo estás?'\n"
+                "Respuesta: 'Muy bien, gracias. ¿En qué puedo ayudarte con nutrición?'\n\n"
+                
+                f"{contexto_nutricional}\n"
+                
+                "Sé útil, preciso y conciso.\n"
+            )
+
+    # Obtener instrucción del sistema según el modelo activo
+    system_instruction = get_system_instruction(contexto_nutricional)
     # Si se trata de cálculo de IMC y ya se devolvió el resultado, no continuar con el prompt normal
     if formula_key and formula_key.lower() == "imc" and not faltantes:
         # Ya se devolvió el resultado arriba
@@ -1790,29 +1910,50 @@ async def chat(request: Request):
         saludos_simples = ["hola", "hello", "hi", "buenas", "buenos días", "buenas tardes", "buenas noches"]
         if ultimo_mensaje and any(saludo == ultimo_mensaje.strip() for saludo in saludos_simples):
             print(f"[DEBUG] Fallback rápido para saludo: '{ultimo_mensaje}'")
-            return {"message": "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"}
+            return {"message": get_fallback_message()}
     
     if not get_ia_engine().is_ready():
         status = get_ia_engine().get_status()
         print(f"[LOG] /chat error: IA engine not ready: {status['message']}")
         return JSONResponse({"error": status["message"]}, status_code=503 if status["status"]=="loading" else 500)
     try:
-        # --- Parámetros de generación optimizados para Phi-3 nutricional ---
-        gen_args = {
-            "max_new_tokens": 120,  # Respuestas más concisas y precisas
-            "temperature": 0.3,     # Menos creatividad, más consistencia
-            "top_p": 0.8,           # Enfoque en tokens más probables
-            "top_k": 30,            # Limitar vocabulario para mayor precisión
-            "repetition_penalty": 1.1,  # Evitar repeticiones
-            "do_sample": True
-        }
+        # --- Parámetros de generación optimizados por modelo ---
+        ia_engine = get_ia_engine()
+        if hasattr(ia_engine, 'current_model_key') and ia_engine.current_model_key == 'deepseek-r1':
+            # Parámetros para DeepSeek-R1 (respuestas más extensas)
+            gen_args = {
+                "max_new_tokens": 600,  # Incrementado para respuestas completas
+                "temperature": 0.4,     # Ligeramente más creativo
+                "top_p": 0.9,           
+                "top_k": 50,            
+                "repetition_penalty": 1.05,  # Menos restrictivo
+                "do_sample": True
+            }
+        else:
+            # Parámetros para Phi-3 (respuestas concisas)
+            gen_args = {
+                "max_new_tokens": 120,  # Respuestas más concisas y precisas
+                "temperature": 0.3,     # Menos creatividad, más consistencia
+                "top_p": 0.8,           # Enfoque en tokens más probables
+                "top_k": 30,            # Limitar vocabulario para mayor precisión
+                "repetition_penalty": 1.1,  # Evitar repeticiones
+                "do_sample": True
+            }
         stop_tokens = ["<|user|>", "<|system|>", "<|assistant|>", "\n\n", "Usuario:", "Pregunta:"]
         import inspect
         sig = inspect.signature(get_ia_engine().generate)
+        
+        print(f"[DEBUG] Generando respuesta con {get_ia_engine().current_model_key}")
+        print(f"[DEBUG] Prompt final length: {len(prompt_final)}")
+        
         if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
             response = get_ia_engine().generate(prompt_final, stop=stop_tokens, **gen_args)
         else:
             response = get_ia_engine().generate(prompt_final)
+            
+        print(f"[DEBUG] Respuesta generada length: {len(response)}")
+        print(f"[DEBUG] Respuesta preview: {response[:200]}...")
+        
         for stop in stop_tokens:
             idx = response.find(stop)
             if idx != -1:
@@ -1865,10 +2006,25 @@ async def chat(request: Request):
                 break
         if not clean_response:
             clean_response = next((l.strip() for l in lines if l.strip() and l.strip().lower() != prompt.strip().lower()), response.strip())
+        
+        # Postprocesador específico para DeepSeek-R1
+        ia_engine = get_ia_engine()
+        thinking_content = None
+        
+        if hasattr(ia_engine, 'current_model_key') and ia_engine.current_model_key == 'deepseek-r1':
+            resultado = limpiar_respuesta_deepseek(clean_response)
+            clean_response = resultado["respuesta"]
+            thinking_content = resultado["thinking"]
+        
         clean_response = postprocesar_respuesta(prompt, clean_response)
         print(f"[LOG] /chat response: {clean_response}")
-        # SIEMPRE devolver message y console_block (null)
-        return {"message": clean_response, "console_block": None}
+        
+        # Preparar respuesta con thinking solo para DeepSeek-R1
+        response_data = {"message": clean_response, "console_block": None}
+        if thinking_content and hasattr(ia_engine, 'current_model_key') and ia_engine.current_model_key == 'deepseek-r1':
+            response_data["thinking"] = thinking_content
+            
+        return response_data
     except Exception as e:
         print(f"[LOG] /chat exception: {e}")
         return JSONResponse({"error": f"Ocurrió un error al generar la respuesta: {str(e)}"}, status_code=500)
@@ -1895,18 +2051,8 @@ def get_model_status():
         
         # Verificar si el modelo está listo
         if ai_engine.is_ready():
-            # Generar mensaje dinámico según el modelo
-            model_name = ai_engine.model_name or "Modelo desconocido"
-            if "phi-3" in model_name.lower():
-                message = "Modelo Phi-3 cargado y listo para usar"
-            elif "deepseek" in model_name.lower():
-                message = "Modelo DeepSeek-R1 cargado y listo para usar"
-            else:
-                message = f"Modelo {model_name.split('/')[-1]} cargado y listo para usar"
-                
             return {
                 "status": "ready",
-                "message": message,
                 "model_ready": True,
                 "model_name": ai_engine.model_name,
                 "device": ai_engine.device

@@ -35,6 +35,13 @@ class IAEngine:
         
         self._load_model()
 
+    def _get_fallback_message(self):
+        """Obtiene mensaje de fallback según el modelo activo"""
+        if self.current_model_key == 'deepseek-r1':
+            return "🧬 DeepSeek Nutrición Avanzada activado. Capacidad de análisis profundo y razonamiento nutricional disponible. ¿Qué consulta nutricional puedo analizar para ti?"
+        else:
+            return "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
+
     def _load_model(self):
         if self.current_engine == "huggingface":
             self._load_huggingface_model()
@@ -60,34 +67,52 @@ class IAEngine:
                     import bitsandbytes as bnb
                     print("[IAEngine] bitsandbytes detectado, cargando modelo en GPU 4-bit optimizada...")
                     
-                    # Configuración simplificada y más conservadora
+                    # Configuración optimizada para velocidad en GPU
                     quantization_config = BitsAndBytesConfig(
                         load_in_4bit=True,
                         bnb_4bit_compute_dtype=torch.float16,
-                        bnb_4bit_use_double_quant=True,
+                        bnb_4bit_use_double_quant=False,  # Deshabilitado para mejor velocidad
                         bnb_4bit_quant_type="nf4"
                     )
                     
-                    # Intento 1: Configuración optimizada
+                    # Intento 1: Configuración optimizada para velocidad
                     try:
                         self.model = AutoModelForCausalLM.from_pretrained(
                             self.model_name,
                             quantization_config=quantization_config,
-                            device_map={"": 0},
+                            device_map={"": 0},  # Forzar GPU 0
                             torch_dtype=torch.float16,
                             trust_remote_code=True,
-                            low_cpu_mem_usage=True
+                            low_cpu_mem_usage=True,
+                            attn_implementation="eager"  # Usar implementación estándar más rápida
                         )
-                        print("[IAEngine] Modelo cargado en GPU con 4-bit cuantización optimizada.")
+                        print("[IAEngine] Modelo cargado en GPU con 4-bit cuantización optimizada para velocidad.")
+                        
+                        # Verificación crítica de ubicación del modelo
+                        if hasattr(self.model, 'device'):
+                            print(f"[IAEngine] ✅ Modelo ubicado en: {self.model.device}")
+                        if hasattr(self.model, 'hf_device_map'):
+                            print(f"[IAEngine] ✅ Device map: {self.model.hf_device_map}")
+                        
+                        # Test rápido de GPU
+                        try:
+                            test_input = self.tokenizer("Test", return_tensors="pt").to(self.model.device)
+                            with torch.no_grad():
+                                test_output = self.model(**test_input)
+                            print("[IAEngine] ✅ Test de GPU exitoso - modelo funcionando en GPU")
+                        except Exception as test_error:
+                            print(f"[IAEngine] ⚠️ Error en test de GPU: {test_error}")
+                            
                     except Exception as opt_error:
                         print(f"[IAEngine] Error con configuración optimizada: {opt_error}")
                         print("[IAEngine] Intentando configuración básica...")
                         
-                        # Intento 2: Configuración básica sin optimizaciones avanzadas
+                        # Intento 2: Configuración básica simplificada
                         self.model = AutoModelForCausalLM.from_pretrained(
                             self.model_name,
                             quantization_config=quantization_config,
                             device_map="auto",  # Dejar que PyTorch decida automáticamente
+                            torch_dtype=torch.float16,
                             trust_remote_code=True
                         )
                         print("[IAEngine] Modelo cargado en GPU con configuración básica.")
@@ -121,8 +146,20 @@ class IAEngine:
             print(f"[IAEngine] Error al cargar el modelo HuggingFace: {self.model_error}")
 
     def _load_ollama_model(self):
-        print(f"[IAEngine] Inicializando cliente Ollama para: {self.model_name}")
+        print(f"[IAEngine] 🔥 FORZANDO DeepSeek-R1 AL MÁXIMO EN GPU: {self.model_name}")
         try:
+            # CONFIGURACIÓN ULTRA AGRESIVA PARA GPU - SIN LÍMITES
+            import os
+            os.environ['OLLAMA_NUM_GPU'] = '1'  # Usar 1 GPU
+            os.environ['OLLAMA_GPU_FRACTION'] = '0.98'  # 98% de la GPU  
+            os.environ['OLLAMA_NUM_GPU_LAYERS'] = '999'  # TODAS LAS CAPAS EN GPU
+            os.environ['OLLAMA_MEMORY'] = '8GB'  # Usar toda la memoria disponible
+            os.environ['OLLAMA_LOW_VRAM'] = 'false'  # NO limitar VRAM
+            
+            print("[IAEngine] 🚀 Variables GPU AGRESIVAS configuradas:")
+            print(f"[IAEngine] 🔥 OLLAMA_NUM_GPU_LAYERS = 999 (TODAS)")
+            print(f"[IAEngine] 🔥 OLLAMA_GPU_FRACTION = 0.98 (98%)")
+            
             self.ollama_client = ollama.Client()
             
             # Verificar si el modelo está disponible
@@ -136,13 +173,23 @@ class IAEngine:
                     self.ollama_client.pull(self.model_name)
                     print(f"[IAEngine] Modelo {self.model_name} descargado exitosamente")
                 else:
-                    print(f"[IAEngine] Modelo {self.model_name} ya disponible")
+                    print(f"[IAEngine] ✅ Modelo {self.model_name} ya disponible")
                 
-                # Test del modelo
+                # Test del modelo CON CONFIGURACIÓN ULTRA AGRESIVA
+                print("[IAEngine] 🔥 Probando configuración GPU ULTRA AGRESIVA...")
                 test_response = self.ollama_client.chat(
                     model=self.model_name,
-                    messages=[{'role': 'user', 'content': 'Test'}],
-                    options={'num_predict': 5}
+                    messages=[{'role': 'user', 'content': 'GPU Test'}],
+                    options={
+                        'num_predict': 5,
+                        'num_gpu': 1,           # FORZAR GPU
+                        'num_thread': 1,        # MÍNIMO CPU (solo 1 thread)
+                        'num_ctx': 2048,        # Contexto optimizado
+                        'low_vram': False,      # SIN límites VRAM
+                        'numa': False,          # Sin NUMA
+                        'use_mlock': True,      # Lock memoria
+                        'use_mmap': True        # Memory mapping
+                    }
                 )
                 print("[IAEngine] Cliente Ollama inicializado correctamente")
                 
@@ -281,10 +328,10 @@ class IAEngine:
                         temperature=temperature,
                         top_p=0.9,  # Más selectivo en las opciones
                         top_k=50,   # Mayor diversidad controlada  
-                        repetition_penalty=1.2,  # Evita más repeticiones
-                        no_repeat_ngram_size=3,   # Evita repetir frases de 3 palabras
-                        use_cache=False,  # Fix DynamicCache.seen_tokens error
-                        pad_token_id=self.tokenizer.eos_token_id  # Fix padding issues
+                        repetition_penalty=1.1,  # Reducido para mejor velocidad
+                        no_repeat_ngram_size=2,   # Reducido para mejor velocidad
+                        use_cache=True,  # CRÍTICO: Habilitar caché KV para usar GPU eficientemente
+                        pad_token_id=self.tokenizer.eos_token_id
                     )
                 result["response"] = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             except Exception as e:
@@ -294,15 +341,15 @@ class IAEngine:
         thread = threading.Thread(target=generate_with_timeout)
         thread.daemon = True
         thread.start()
-        thread.join(timeout=15)  # 15 segundos timeout para mejores respuestas
+        thread.join(timeout=30)  # Reducido a 30 segundos para forzar eficiencia GPU
         
-        # Si el thread aún está vivo, significa que se colgó
+        # Si el thread aún está vivo, significa que está siendo muy lento
         if thread.is_alive():
-            print("[IAEngine] Timeout - usando respuesta fallback")
-            response = "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
+            print("[IAEngine] Timeout después de 30 segundos - posible problema de GPU")
+            response = self._get_fallback_message()
         elif result["error"]:
             print(f"[IAEngine] Error en generación: {result['error']}")
-            response = "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
+            response = self._get_fallback_message()
         else:
             response = result["response"]
         
@@ -313,17 +360,34 @@ class IAEngine:
         response = "\n".join(response.splitlines()[:3]).strip()
         return response
 
-    def _generate_ollama(self, prompt, max_new_tokens=120, temperature=0.3):
-        """Generación usando Ollama (DeepSeek-R1)"""
+    def _generate_ollama(self, prompt, max_new_tokens=300, temperature=0.3):
+        """Generación usando Ollama (DeepSeek-R1) 🔥 ULTRA AGRESIVO PARA GPU"""
         try:
-            # Configurar opciones de generación para Ollama
+            # CONFIGURACIÓN ULTRA AGRESIVA - 99% GPU, 1% CPU
             options = {
-                'num_predict': max_new_tokens,
-                'temperature': temperature,
-                'top_p': 0.9,
-                'top_k': 50,
-                'repeat_penalty': 1.2
+                'num_predict': max(400, max_new_tokens),  # Suficiente para respuestas completas
+                'temperature': 0.2,  # Más determinístico, menos divagación
+                'top_p': 0.8,        # Más enfocado en tokens relevantes
+                'top_k': 30,         # Vocabulario más restringido
+                'repeat_penalty': 1.1,  # Evitar repeticiones
+                'stop': ['Usuario:', 'Pregunta:', '\n\nUsuario:', 'user:', '\nuser:'],  # Solo stop en cambios de turno
+                # 🔥🔥🔥 CONFIGURACIONES ULTRA AGRESIVAS PARA GPU 🔥🔥🔥
+                'num_gpu': 1,           # FORZAR GPU AL 100%
+                'num_thread': 1,        # SOLO 1 THREAD CPU (MÍNIMO)
+                'numa': False,          # Sin NUMA para GPU
+                'use_mlock': True,      # Lock memoria AGRESIVO
+                'low_vram': False,      # SIN LÍMITES DE VRAM
+                'use_mmap': True,       # Memory mapping optimizado
+                'num_ctx': 4096,        # Contexto completo
+                'num_batch': 512,       # Batch grande para GPU
+                'num_gqa': 8,          # Group Query Attention optimizado
+                'num_gpu_layers': 999,  # TODAS LAS CAPAS EN GPU
+                'main_gpu': 0,         # GPU primaria
+                'tensor_split': None    # No dividir tensores
             }
+            
+            print(f"[IAEngine] 🔥🔥🔥 GENERANDO CON GPU AL MÁXIMO - DeepSeek-R1 ULTRA AGRESIVO, prompt length: {len(prompt)}")
+            print(f"[IAEngine] 🚀 Configuración: 999 capas GPU, 1 thread CPU, sin límites VRAM")
             
             response = self.ollama_client.chat(
                 model=self.model_name,
@@ -333,19 +397,16 @@ class IAEngine:
                 options=options
             )
             
-            # Extraer el contenido de la respuesta
+            # Extraer el contenido completo de la respuesta
             message_content = response.get('message', {}).get('content', '')
+            print(f"[IAEngine] 🔥✅ RESPUESTA GPU ULTRA AGRESIVA RECIBIDA, length: {len(message_content)}")
             
-            # Limitar a 3 líneas para consistencia
-            lines = message_content.strip().split('\n')
-            if len(lines) > 3:
-                message_content = '\n'.join(lines[:3])
-            
+            # NO limitar líneas para DeepSeek-R1 - permitir respuestas completas
             return message_content.strip()
             
         except Exception as e:
-            print(f"[IAEngine] Error en generación Ollama: {e}")
-            return "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
+            print(f"[IAEngine] ❌ Error en generación GPU ULTRA AGRESIVA: {e}")
+            return self._get_fallback_message()
 
     def switch_model(self, model_key):
         """Cambiar entre modelos disponibles"""

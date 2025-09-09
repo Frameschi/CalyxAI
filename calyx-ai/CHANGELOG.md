@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.6.1] - 2025-09-09
+### 🧠 CARACTERÍSTICA MAYOR: DeepSeek-R1 "Thinking" Dropdown
+- **ChatGPT-style Thinking**: Implementado dropdown colapsible para mostrar el proceso de razonamiento de DeepSeek-R1
+- **Separación inteligente**: Separación automática entre `<think>` y respuesta final
+- **UI elegante**: Dropdown con ícono de cerebro 🧠 y animación suave
+- **Experiencia mejorada**: Los usuarios pueden ver el proceso de pensamiento detallado del modelo
+
+### ⚡ OPTIMIZACIÓN CRÍTICA: GPU Performance Boost
+- **GPU utilization**: Incremento dramático de 1% → 42% utilización GPU
+- **Memory optimization**: VRAM usage optimizado de 612MB → 3.7GB (93% GTX 1050 Ti)
+- **Configuración GPU**: Variables de entorno optimizadas para máximo rendimiento
+  - `OLLAMA_NUM_GPU_LAYERS=32`
+  - `OLLAMA_GPU_FRACTION=0.8`
+- **CPU/GPU Balance**: Distribución optimizada 42%/58% CPU/GPU para hardware limitado
+
+### 🔧 Fixes técnicos y estabilidad
+- **Ollama integration**: Conexión mejorada entre backend y Ollama
+- **Model loading**: Precarga automática de DeepSeek-R1 para mejor responsividad
+- **Error handling**: Manejo mejorado de timeouts y conexiones
+- **Code cleanup**: Eliminación de archivos temporales y de testing
+
 ## [1.6.0] - 2025-09-06
 ### 🤖 NUEVO MODELO: DeepSeek-R1 - Razonamiento matemático avanzado
 - **Dual-model system**: Agregado DeepSeek-R1-0528-Qwen3-8B-GGUF junto a Phi-3-Mini

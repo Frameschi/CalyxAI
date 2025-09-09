@@ -1,8 +1,8 @@
 {
   "name": "calyx-ai",
   "productName": "Calyx AI",
-  "version": "1.6.0",
-  "description": "AI-powered medical calculation assistant with local Phi-3 model",
+  "version": "1.6.1",
+  "description": "AI-powered medical calculation assistant with DeepSeek-R1 thinking transparency and GPU optimization",
   "author": {
     "name": "ARCROSS",
     "email": "info@arcross.com"

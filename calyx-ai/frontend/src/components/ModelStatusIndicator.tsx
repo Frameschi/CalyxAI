@@ -85,9 +85,11 @@ const ModelStatusIndicator: React.FC<ModelStatusIndicatorProps> = ({
       <div className={`${className}`}>
         <div className="flex items-center space-x-2">
           <span>{getStatusIcon(modelStatus.status)}</span>
-          <span className={getStatusColor(modelStatus.status)}>
-            {modelStatus.message}
-          </span>
+          {modelStatus.message && (
+            <span className={getStatusColor(modelStatus.status)}>
+              {modelStatus.message}
+            </span>
+          )}
           {modelStatus.status === 'error' && (
             <button 
               onClick={refetch}

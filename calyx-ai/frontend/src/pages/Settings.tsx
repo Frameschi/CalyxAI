@@ -2,7 +2,6 @@ import React from 'react';
 import { ArrowLeft, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useModelStatus } from '../contexts/ModelStatusContext';
-import ModelStatusIndicator from '../components/ModelStatusIndicator';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -123,8 +122,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
             </h2>
             
             <div className="space-y-4">
-              <ModelStatusIndicator showDetails={true} />
-              
               <div className="text-sm text-gray-600 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
                 <p className="font-medium text-blue-800 dark:text-blue-200 mb-1">
                   💡 Información sobre el modelo

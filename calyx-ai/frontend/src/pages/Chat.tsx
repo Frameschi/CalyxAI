@@ -6,9 +6,9 @@ import { ConsoleBlockYaml } from "../components/ConsoleBlockYaml";
 import { esBloqueYaml } from "../utils/formatConsole";
 import { Sidebar } from "../components/Sidebar";
 import { SettingsPage } from "./Settings";
-import ModelStatusIndicator from "../components/ModelStatusIndicator";
 import { useModelStatus } from "../contexts/ModelStatusContext";
 import BackendStartupProgress from "../components/BackendStartupProgress";
+import ThinkingDropdown from "../components/ThinkingDropdown";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -20,6 +20,7 @@ export default function Chat() {
     title?: string;
     input?: string;
     output?: string;
+    thinking?: string;
   }
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -80,12 +81,6 @@ export default function Chat() {
       if (response.ok) {
         const data = await response.json();
         setSelectedModel(newModelKey);
-        // Agregar mensaje informativo al chat
-        setMessages(prev => [...prev, {
-          from: "ai",
-          text: `Modelo cambiado a: ${availableModels[newModelKey] || newModelKey}`,
-          type: "text"
-        }]);
       } else {
         const errorData = await response.json();
         console.error("Error cambiando modelo:", errorData.error);
@@ -325,7 +320,7 @@ export default function Chat() {
         console.log(`[DEBUG Frontend] Es fórmula médica: ${esFamilaMedica}, Contexto: ${cantidadContexto} mensajes`);
         
         const controller = window.AbortController ? new window.AbortController() : new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 60000);
+        const timeoutId = window.setTimeout(() => controller.abort(), 180000); // 3 minutos para consultas complejas
         try {
           const res = await fetch(`${API_URL}/chat`, {
             method: "POST",
@@ -339,7 +334,18 @@ export default function Chat() {
           let arr: Message[] = [];
           if (data.message && data.message.trim().length > 0) {
             const tipo = esBloqueYaml(data.message) ? "yaml" : "text";
-            arr.push({ from: "ai", text: data.message, type: tipo });
+            const mensaje: Message = { 
+              from: "ai", 
+              text: data.message, 
+              type: tipo 
+            };
+            
+            // Incluir thinking solo si existe en la respuesta
+            if (data.thinking && data.thinking.trim().length > 0) {
+              mensaje.thinking = data.thinking;
+            }
+            
+            arr.push(mensaje);
           }
           if (data.console_block && typeof data.console_block === 'object') {
             arr.push({
@@ -466,13 +472,6 @@ export default function Chat() {
                 />
               )}
               
-              {/* Estado del modelo cuando el backend esté listo */}
-              {!showBackendProgress && (
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border">
-                  <ModelStatusIndicator showDetails={true} className="text-base" />
-                </div>
-              )}
-              
               {/* Mensaje adicional si hay error de conexión (solo cuando no se muestra progreso) */}
               {!showBackendProgress && modelError && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
@@ -518,7 +517,16 @@ export default function Chat() {
           } else {
             return (
               <div key={i} className="mb-4 flex justify-start">
-                <ConsoleRenderer text={msg.text} />
+                <div className="max-w-4xl">
+                  {/* Mostrar ThinkingDropdown solo si hay thinking content */}
+                  {msg.thinking && (
+                    <ThinkingDropdown 
+                      thinking={msg.thinking} 
+                      className="mb-2" 
+                    />
+                  )}
+                  <ConsoleRenderer text={msg.text} />
+                </div>
               </div>
             );
           }
@@ -529,7 +537,6 @@ export default function Chat() {
       {/* Indicador de estado del modelo (solo cuando hay mensajes) */}
       {messages.length > 0 && (
         <div className="px-6 pb-2">
-          <ModelStatusIndicator className="text-sm opacity-75" />
         </div>
       )}
       
@@ -542,7 +549,7 @@ export default function Chat() {
             className={`flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none border-none text-base py-2 transition-colors ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             placeholder={
               modelSwitching ? "⟳ Cambiando modelo..." :
-              loading ? "Procesando respuesta..." : 
+              loading ? (selectedModel === 'deepseek-r1' ? "🧬 Analizando con razonamiento avanzado..." : "Procesando respuesta...") : 
               activeAnimations > 0 ? "Desglosando cálculos..." : 
               "Escribe tu mensaje..."
             }
