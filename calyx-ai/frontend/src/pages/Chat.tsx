@@ -42,6 +42,15 @@ export default function Chat() {
   // Estado combinado para deshabilitar input
   const isProcessing = loading || activeAnimations > 0 || modelSwitching;
   
+  // Detectar si hay mensajes para determinar posición del orb
+  const hasMessages = messages.length > 0;
+  const hasAiMessages = messages.filter(msg => msg.from === "ai").length > 0;
+  
+  // Estados para manejar la transición del orb
+  const [isOrbTransitioning, setIsOrbTransitioning] = useState(false);
+  const [showCenterOrb, setShowCenterOrb] = useState(true);
+  const [showLateralOrb, setShowLateralOrb] = useState(false);
+  
   // Funciones para manejar estado de animaciones
   const handleTypingStart = () => {
     setActiveAnimations(prev => prev + 1);
@@ -50,6 +59,19 @@ export default function Chat() {
   const handleTypingEnd = () => {
     setActiveAnimations(prev => Math.max(0, prev - 1));
   };
+
+  // Efecto para manejar el estado inicial de los orbs
+  useEffect(() => {
+    if (hasMessages) {
+      // Si ya hay mensajes, mostrar orb lateral
+      setShowCenterOrb(false);
+      setShowLateralOrb(true);
+    } else {
+      // Si no hay mensajes, mostrar orb central
+      setShowCenterOrb(true);
+      setShowLateralOrb(false);
+    }
+  }, [hasMessages]);
 
   // Función para cargar información del modelo actual
   const loadCurrentModel = async () => {
@@ -132,6 +154,20 @@ export default function Chat() {
     if (input.trim() === "" || isProcessing) return; // Usar isProcessing en lugar de solo loading
     
     const userMsg = input;
+    const isFirstMessage = messages.length === 0;
+    
+    // Activar transición del orb si es el primer mensaje
+    if (isFirstMessage) {
+      setIsOrbTransitioning(true);
+      setShowCenterOrb(false);
+      
+      // Después de 1200ms mostrar el orb lateral (coincide con duración CSS)
+      setTimeout(() => {
+        setShowLateralOrb(true);
+        setIsOrbTransitioning(false);
+      }, 1200);
+    }
+    
     setMessages([...messages, { from: "user", text: userMsg, type: "text" }]);
     setInput("");
     setLoading(true);
@@ -451,20 +487,23 @@ export default function Chat() {
         {messages.length === 0 && (
           <div className="flex-1 flex items-center justify-center min-h-96">
             <div className="text-center space-y-6 max-w-md">
-              <div className="flex justify-center">
-                <img 
-                  src="/logo.png" 
-                  alt="Calyx AI Logo" 
-                  className="w-16 h-16 object-contain"
-                />
-              </div>
+              {/* ORB CENTRAL - ARRIBA del título */}
+              {!showBackendProgress && !modelError && showCenterOrb && (
+                <div className="flex justify-center mb-6">
+                  <AiOrb 
+                    size="large" 
+                    isActive={modelSwitching}
+                    position="center"
+                    isTransitioning={isOrbTransitioning}
+                  />
+                </div>
+              )}
               <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
                 Bienvenido a Calyx AI
               </h2>
               <p className="text-gray-600 dark:text-gray-300">
                 Asistente de cálculos médicos con IA local
               </p>
-              
               {/* Mostrar progreso del backend si está iniciándose */}
               {showBackendProgress && (
                 <BackendStartupProgress 
@@ -472,7 +511,6 @@ export default function Chat() {
                   className="max-w-md mx-auto"
                 />
               )}
-              
               {/* Mensaje adicional si hay error de conexión (solo cuando no se muestra progreso) */}
               {!showBackendProgress && modelError && (
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
@@ -481,23 +519,8 @@ export default function Chat() {
                   </p>
                 </div>
               )}
-              
-              {/* Orb inicial con mensaje de bienvenida al estilo Claude */}
-              {!showBackendProgress && !modelError && (
-                <div className="flex items-start justify-start max-w-4xl mx-auto mt-8">
-                  <div className="mr-3 mt-1 flex-shrink-0">
-                    <AiOrb size="medium" isActive={false} />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-gray-600 dark:text-gray-300">
-                      ¿En qué puedo asistirte hoy?
-                    </p>
-                  </div>
-                </div>
-              )}
-              
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Escribe tu consulta médica para comenzar
+              <p className="text-gray-600 dark:text-gray-300 text-center">
+                ¿En qué puedo asistirte hoy?
               </p>
             </div>
           </div>
@@ -547,17 +570,20 @@ export default function Chat() {
                     <ConsoleRenderer text={msg.text} />
                   </div>
                 </div>
-                {/* SIN ORB AQUÍ - movido al final */}
               </div>
             );
           }
         })}
         
-        {/* ÚNICO ORB - reacciona a todo: loading, typing, thinking */}
-        {isProcessing && (
+        {/* UN SOLO ORB LATERAL - Al final de todos los mensajes */}
+        {hasMessages && showLateralOrb && (
           <div className="mb-4 flex justify-start items-start">
             <div className="mr-3 mt-1 flex-shrink-0">
-              <AiOrb size="medium" isActive={true} />
+              <AiOrb 
+                size="medium" 
+                isActive={isProcessing}
+                position="lateral"
+              />
             </div>
             {loading && (
               <div className="max-w-4xl">
