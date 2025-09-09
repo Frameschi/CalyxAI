@@ -4,9 +4,16 @@ import './AiOrb.css';
 interface AiOrbProps {
   isActive?: boolean;
   size?: 'small' | 'medium' | 'large';
+  position?: 'center' | 'lateral';
+  isTransitioning?: boolean;
 }
 
-const AiOrb: React.FC<AiOrbProps> = ({ isActive = false, size = 'medium' }) => {
+const AiOrb: React.FC<AiOrbProps> = ({ 
+  isActive = false, 
+  size = 'medium', 
+  position = 'lateral', 
+  isTransitioning = false 
+}) => {
   const [isLightMode, setIsLightMode] = useState(false);
 
   useEffect(() => {
@@ -40,8 +47,12 @@ const AiOrb: React.FC<AiOrbProps> = ({ isActive = false, size = 'medium' }) => {
 
   const themeClass = isLightMode ? 'light-theme' : 'dark-theme';
 
+  // Clases de posición y transición
+  const positionClass = position === 'center' ? 'orb-position-center' : 'orb-position-lateral';
+  const transitionClass = isTransitioning ? 'orb-transitioning' : '';
+
   return (
-    <div className={`ai-orb-wrapper ${sizeClasses[size]} ${isActive ? 'processing' : 'standby'}`}>
+    <div className={`ai-orb-wrapper ${sizeClasses[size]} ${isActive ? 'processing' : 'standby'} ${positionClass} ${transitionClass}`}>
       <div className="orb-container">
         <div className={`glass-orb ${themeClass}`}>
           <div className="aura-core"></div>
