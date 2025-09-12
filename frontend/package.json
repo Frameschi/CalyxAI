@@ -1,0 +1,147 @@
+{
+  "name": "calyx-ai",
+  "productName": "Calyx AI",
+  "version": "1.6.1",
+  "description": "AI-powered medical calculation assistant with DeepSeek-R1 thinking transparency and GPU optimization",
+  "author": {
+    "name": "ARCROSS",
+    "email": "info@arcross.com"
+  },
+  "main": "electron/main.cjs",
+  "homepage": "./",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build-electron": "tsc -p tsconfig.electron.json",
+    "start": "npm run build-electron && electron .",
+    "build-app": "npm run build && npm run build-electron",
+    "dist": "npm run build-app && electron-builder",
+    "dist-windows": "npm run build-app && electron-builder --win",
+    "dist-linux": "npm run build-app && electron-builder --linux",
+    "dist-mac": "npm run build-app && electron-builder --mac"
+  },
+  "dependencies": {
+    "framer-motion": "^11.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.23.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
+    "@types/node": "^24.0.13",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.21",
+    "electron": "^37.2.1",
+    "electron-builder": "^26.0.12",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3",
+    "vite": "^5.0.0"
+  },
+  "build": {
+    "appId": "com.arcross.calyxai",
+    "productName": "Calyx AI",
+    "copyright": "Copyright © 2025 ARCROSS",
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist-installer"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "public/**/*",
+      "node_modules/**/*",
+      "package.json",
+      "../backend/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "public/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "public/logo.png",
+        "to": "logo.png"
+      },
+      {
+        "from": "public/loading.png",
+        "to": "loading.png"
+      },
+      {
+        "from": "../backend",
+        "to": "backend"
+      },
+      {
+        "from": "start-backend.bat",
+        "to": "start-backend.bat"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "assets/icons/icon.ico",
+      "verifyUpdateCodeSignature": false,
+      "signAndEditExecutable": false,
+      "forceCodeSigning": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Calyx AI",
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/logo.png",
+      "category": "Science"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "public/logo.png",
+      "category": "public.app-category.healthcare-fitness"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Frameschi",
+      "repo": "CalyxAI"
+    }
+  }
+}
