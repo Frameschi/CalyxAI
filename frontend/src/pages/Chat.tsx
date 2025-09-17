@@ -357,7 +357,14 @@ export default function Chat() {
         console.log(`[DEBUG Frontend] Es fórmula médica: ${esFamilaMedica}, Contexto: ${cantidadContexto} mensajes`);
         
         const controller = window.AbortController ? new window.AbortController() : new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 180000); // 3 minutos para consultas complejas
+        const timeoutId = window.setTimeout(() => {
+          console.log('[DEBUG Frontend] Timeout alcanzado, abortando petición');
+          controller.abort();
+        }, 300000); // 5 minutos para DeepSeek-R1
+        
+        console.log(`[DEBUG Frontend] Iniciando fetch a ${API_URL}/chat con timeout de 5 minutos`);
+        console.log(`[DEBUG Frontend] Prompt length: ${promptFinal.length} caracteres`);
+        
         try {
           const res = await fetch(`${API_URL}/chat`, {
             method: "POST",
@@ -365,8 +372,13 @@ export default function Chat() {
             body: JSON.stringify({ prompt: promptFinal }),
             signal: controller.signal
           });
+          
+          console.log(`[DEBUG Frontend] Fetch completado, status: ${res.status}`);
           window.clearTimeout(timeoutId);
+          console.log('[DEBUG Frontend] Timeout limpiado exitosamente');
+          
           const data = await res.json();
+          console.log(`[DEBUG Frontend] JSON parseado exitosamente, data keys: ${Object.keys(data)}`);
           // Procesar bloque técnico si existe
           let arr: Message[] = [];
           if (data.message && data.message.trim().length > 0) {
@@ -399,9 +411,14 @@ export default function Chat() {
           setMessages((msgs: Message[]) => [...msgs, ...arr]);
         } catch (err: any) {
           window.clearTimeout(timeoutId);
+          console.log('[DEBUG Frontend] Error en fetch, limpiando timeout');
+          console.log(`[DEBUG Frontend] Error type: ${err?.name}, message: ${err?.message}`);
+          
           if (err && err.name === 'AbortError') {
+            console.log('[DEBUG Frontend] AbortError detectado - verificando si fue por timeout o cancelación manual');
             setMessages((msgs: Message[]) => [...msgs, { from: "ai", text: "El servidor está tardando demasiado en responder. Intenta de nuevo más tarde.", type: "text" }]);
           } else {
+            console.log('[DEBUG Frontend] Error de conexión que no es AbortError');
             setMessages((msgs: Message[]) => [...msgs, { from: "ai", text: "Error de conexión con el backend.", type: "text" }]);
           }
         }

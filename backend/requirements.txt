@@ -4,3 +4,8 @@ transformers
 torch
 bitsandbytes
 huggingface_hub
+ollama
+sqlite3
+unicodedata
+json
+re

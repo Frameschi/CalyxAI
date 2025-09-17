@@ -1,18 +1,11 @@
-
-from transformers import AutoModelForCausalLM, AutoTokenizer, logging, BitsAndBytesConfig
-import torch
+# Imports para DeepSeek-R1 via Ollama
 import os
 import ollama
 
 class IAEngine:
     def __init__(self, model_name=None):
-        # Configuración de modelos disponibles
+        # Configuración de modelos disponibles - SOLO DEEPSEEK-R1
         self.available_models = {
-            "phi3-mini": {
-                "name": "microsoft/phi-3-mini-4k-instruct",
-                "engine": "huggingface",
-                "description": "Phi-3 Mini - Rápido y eficiente"
-            },
             "deepseek-r1": {
                 "name": "hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q4_K_M",
                 "engine": "ollama", 
@@ -20,147 +13,62 @@ class IAEngine:
             }
         }
         
-        # Modelo por defecto
-        self.current_model_key = "phi3-mini"
+        # Modelo por defecto - DeepSeek-R1
+        self.current_model_key = "deepseek-r1"
         current_model_config = self.available_models[self.current_model_key]
         self.model_name = model_name or current_model_config["name"]
         self.current_engine = current_model_config["engine"]
         
         # Engines
-        self.tokenizer = None
-        self.model = None
         self.model_error = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.ollama_client = None
         
         self._load_model()
 
-    def _get_fallback_message(self):
-        """Obtiene mensaje de fallback según el modelo activo"""
-        if self.current_model_key == 'deepseek-r1':
-            return "🧬 DeepSeek Nutrición Avanzada activado. Capacidad de análisis profundo y razonamiento nutricional disponible. ¿Qué consulta nutricional puedo analizar para ti?"
-        else:
-            return "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
-
     def _load_model(self):
-        if self.current_engine == "huggingface":
-            self._load_huggingface_model()
-        elif self.current_engine == "ollama":
+        """Cargar solo DeepSeek-R1 via Ollama"""
+        if self.current_engine == "ollama":
             self._load_ollama_model()
         else:
-            self.model_error = f"Engine no soportado: {self.current_engine}"
-
-    def _load_huggingface_model(self):
-        logging.set_verbosity_info()
-        print(f"[IAEngine] Cargando modelo HuggingFace: {self.model_name}")
-        print(f"[IAEngine] torch.cuda.is_available(): {torch.cuda.is_available()}")
-        if torch.cuda.is_available():
-            print(f"[IAEngine] GPU detectada: {torch.cuda.get_device_name(0)}")
-        else:
-            print("[IAEngine] No se detectó GPU, usando CPU (puede ser muy lento o fallar por RAM)")
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            
-            # Configuración explícita para GPU con 4-bit optimizada
-            if torch.cuda.is_available():
-                try:
-                    import bitsandbytes as bnb
-                    print("[IAEngine] bitsandbytes detectado, cargando modelo en GPU 4-bit optimizada...")
-                    
-                    # Configuración optimizada para velocidad en GPU
-                    quantization_config = BitsAndBytesConfig(
-                        load_in_4bit=True,
-                        bnb_4bit_compute_dtype=torch.float16,
-                        bnb_4bit_use_double_quant=False,  # Deshabilitado para mejor velocidad
-                        bnb_4bit_quant_type="nf4"
-                    )
-                    
-                    # Intento 1: Configuración optimizada para velocidad
-                    try:
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            self.model_name,
-                            quantization_config=quantization_config,
-                            device_map={"": 0},  # Forzar GPU 0
-                            torch_dtype=torch.float16,
-                            trust_remote_code=True,
-                            low_cpu_mem_usage=True,
-                            attn_implementation="eager"  # Usar implementación estándar más rápida
-                        )
-                        print("[IAEngine] Modelo cargado en GPU con 4-bit cuantización optimizada para velocidad.")
-                        
-                        # Verificación crítica de ubicación del modelo
-                        if hasattr(self.model, 'device'):
-                            print(f"[IAEngine] ✅ Modelo ubicado en: {self.model.device}")
-                        if hasattr(self.model, 'hf_device_map'):
-                            print(f"[IAEngine] ✅ Device map: {self.model.hf_device_map}")
-                        
-                        # Test rápido de GPU
-                        try:
-                            test_input = self.tokenizer("Test", return_tensors="pt").to(self.model.device)
-                            with torch.no_grad():
-                                test_output = self.model(**test_input)
-                            print("[IAEngine] ✅ Test de GPU exitoso - modelo funcionando en GPU")
-                        except Exception as test_error:
-                            print(f"[IAEngine] ⚠️ Error en test de GPU: {test_error}")
-                            
-                    except Exception as opt_error:
-                        print(f"[IAEngine] Error con configuración optimizada: {opt_error}")
-                        print("[IAEngine] Intentando configuración básica...")
-                        
-                        # Intento 2: Configuración básica simplificada
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            self.model_name,
-                            quantization_config=quantization_config,
-                            device_map="auto",  # Dejar que PyTorch decida automáticamente
-                            torch_dtype=torch.float16,
-                            trust_remote_code=True
-                        )
-                        print("[IAEngine] Modelo cargado en GPU con configuración básica.")
-                        
-                except ImportError:
-                    print("[IAEngine] bitsandbytes no disponible, cargando en GPU FP16...")
-                    # Configuración de fallback sin cuantización
-                    try:
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            self.model_name,
-                            torch_dtype=torch.float16,
-                            device_map="auto",
-                            trust_remote_code=True
-                        )
-                        print("[IAEngine] Modelo cargado en GPU FP16.")
-                    except Exception as fp16_error:
-                        print(f"[IAEngine] Error en GPU FP16: {fp16_error}")
-                        print("[IAEngine] Intentando carga en CPU como último recurso...")
-                        raise fp16_error  # Propagar el error para que caiga al bloque CPU
-            else:
-                print("[IAEngine] GPU no disponible, usando CPU...")
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_name,
-                    torch_dtype=torch.float16,
-                    device_map="cpu",
-                    trust_remote_code=True
-                )
-                print("[IAEngine] Modelo cargado en CPU.")
-        except Exception as e:
-            self.model_error = str(e)
-            print(f"[IAEngine] Error al cargar el modelo HuggingFace: {self.model_error}")
+            self.model_error = f"Engine no soportado: {self.current_engine}. Solo se soporta Ollama con DeepSeek-R1."
 
     def _load_ollama_model(self):
-        print(f"[IAEngine] 🔥 FORZANDO DeepSeek-R1 AL MÁXIMO EN GPU: {self.model_name}")
+        print(f"[IAEngine] [LOADING] Configurando DeepSeek-R1 con optimización GPU: {self.model_name}")
         try:
-            # CONFIGURACIÓN ULTRA AGRESIVA PARA GPU - SIN LÍMITES
+            # CONFIGURACIÓN OPTIMIZADA PARA GPU - BALANCEADA
             import os
             os.environ['OLLAMA_NUM_GPU'] = '1'  # Usar 1 GPU
-            os.environ['OLLAMA_GPU_FRACTION'] = '0.98'  # 98% de la GPU  
-            os.environ['OLLAMA_NUM_GPU_LAYERS'] = '999'  # TODAS LAS CAPAS EN GPU
-            os.environ['OLLAMA_MEMORY'] = '8GB'  # Usar toda la memoria disponible
+            os.environ['OLLAMA_GPU_FRACTION'] = '0.8'  # 80% de la GPU (más estable)
+            os.environ['OLLAMA_NUM_GPU_LAYERS'] = '32'  # Capas optimizadas
             os.environ['OLLAMA_LOW_VRAM'] = 'false'  # NO limitar VRAM
-            
-            print("[IAEngine] 🚀 Variables GPU AGRESIVAS configuradas:")
-            print(f"[IAEngine] 🔥 OLLAMA_NUM_GPU_LAYERS = 999 (TODAS)")
-            print(f"[IAEngine] 🔥 OLLAMA_GPU_FRACTION = 0.98 (98%)")
-            
-            self.ollama_client = ollama.Client()
+
+            print("[IAEngine] [CONFIG] Variables GPU optimizadas configuradas:")
+            print(f"[IAEngine] [LOADING] OLLAMA_NUM_GPU_LAYERS = 32")
+            print(f"[IAEngine] [LOADING] OLLAMA_GPU_FRACTION = 0.8 (80%)")
+
+            # Intentar conectar con diferentes configuraciones de host
+            host_options = ['http://localhost:11434', None]  # None usa default
+
+            for host in host_options:
+                try:
+                    if host:
+                        self.ollama_client = ollama.Client(host=host)
+                        print(f"[IAEngine] [CONNECT] Intentando conectar a Ollama en: {host}")
+                    else:
+                        self.ollama_client = ollama.Client()
+                        print(f"[IAEngine] [CONNECT] Usando configuración por defecto de Ollama")
+
+                    # Verificar conexión listando modelos
+                    models = self.ollama_client.list()
+                    print(f"[IAEngine] [OK] Conexión exitosa. Modelos disponibles: {len(models.models)}")
+                    break
+
+                except Exception as conn_error:
+                    print(f"[IAEngine] [ERROR] Error de conexión con host {host}: {conn_error}")
+                    if host == host_options[-1]:  # Último intento
+                        self.model_error = f"Error de conexión con Ollama: {conn_error}"
+                        print(f"[IAEngine] [FALLBACK] Usando modo fallback sin modelo")
+                        return
             
             # Verificar si el modelo está disponible
             try:
@@ -173,25 +81,24 @@ class IAEngine:
                     self.ollama_client.pull(self.model_name)
                     print(f"[IAEngine] Modelo {self.model_name} descargado exitosamente")
                 else:
-                    print(f"[IAEngine] ✅ Modelo {self.model_name} ya disponible")
+                    print(f"[IAEngine] [OK] Modelo {self.model_name} ya disponible")
                 
-                # Test del modelo CON CONFIGURACIÓN ULTRA AGRESIVA
-                print("[IAEngine] 🔥 Probando configuración GPU ULTRA AGRESIVA...")
+                # Test del modelo con configuración optimizada
+                print("[IAEngine] [TEST] Probando configuración GPU optimizada...")
                 test_response = self.ollama_client.chat(
                     model=self.model_name,
-                    messages=[{'role': 'user', 'content': 'GPU Test'}],
+                    messages=[{'role': 'user', 'content': 'Test de funcionamiento básico'}],
                     options={
-                        'num_predict': 5,
-                        'num_gpu': 1,           # FORZAR GPU
-                        'num_thread': 1,        # MÍNIMO CPU (solo 1 thread)
-                        'num_ctx': 2048,        # Contexto optimizado
-                        'low_vram': False,      # SIN límites VRAM
-                        'numa': False,          # Sin NUMA
-                        'use_mlock': True,      # Lock memoria
-                        'use_mmap': True        # Memory mapping
+                        'num_predict': 10,
+                        'num_gpu': 1,           # Usar GPU
+                        'num_thread': 4,        # Threads balanceados
+                        'num_ctx': 4096,        # Contexto ampliado para nutrición
+                        'temperature': 0.1,     # Baja temperatura para respuestas consistentes
+                        'low_vram': False
                     }
                 )
-                print("[IAEngine] Cliente Ollama inicializado correctamente")
+                print("[IAEngine] [OK] Cliente Ollama inicializado correctamente")
+                print(f"[IAEngine] 📝 Respuesta de test: {test_response['message']['content'][:100]}...")
                 
             except Exception as e:
                 self.model_error = f"Error al verificar/descargar modelo Ollama: {str(e)}"
@@ -202,60 +109,40 @@ class IAEngine:
             print(f"[IAEngine] {self.model_error}")
 
     def is_ready(self):
-        if self.current_engine == "huggingface":
-            return self.model is not None and self.tokenizer is not None and self.model_error is None
-        elif self.current_engine == "ollama":
+        """Verificar si DeepSeek-R1 está listo via Ollama"""
+        if self.current_engine == "ollama":
             return self.ollama_client is not None and self.model_error is None
         return False
 
     def is_model_downloaded(self):
-        """Verificar si el modelo está descargado en el cache local"""
+        """Verificar si el modelo DeepSeek-R1 está descargado en Ollama"""
+        if self.ollama_client is None:
+            return False
         try:
-            from transformers import AutoTokenizer
-            # Intentar cargar solo el tokenizer para verificar si el modelo existe
-            tokenizer_path = AutoTokenizer.from_pretrained(
-                self.model_name, 
-                local_files_only=True
-            )
-            return True
+            models = self.ollama_client.list()
+            model_names = [model.model for model in models.models]
+            return self.model_name in model_names
         except Exception:
             return False
 
     def get_model_cache_info(self):
-        """Obtener información sobre el cache del modelo"""
+        """Obtener información sobre el modelo en Ollama"""
         try:
-            import os
-            from pathlib import Path
+            if self.ollama_client is None:
+                return {"error": "Cliente Ollama no disponible"}
             
-            # Directorio típico de cache de HuggingFace
-            cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
-            model_cache_path = None
-            model_size = 0
-            
-            if os.path.exists(cache_dir):
-                for item in os.listdir(cache_dir):
-                    if "phi-3" in item.lower():
-                        model_path = os.path.join(cache_dir, item)
-                        if os.path.isdir(model_path):
-                            model_cache_path = model_path
-                            # Calcular tamaño del modelo
-                            for root, dirs, files in os.walk(model_path):
-                                for file in files:
-                                    model_size += os.path.getsize(os.path.join(root, file))
-                            break
-            
-            return {
-                "cache_path": model_cache_path,
-                "size_mb": round(model_size / (1024 * 1024), 2) if model_size > 0 else 0,
-                "is_downloaded": model_cache_path is not None
-            }
+            models = self.ollama_client.list()
+            for model in models.models:
+                if model.model == self.model_name:
+                    return {
+                        "model": model.model,
+                        "size": getattr(model, 'size', 'Desconocido'),
+                        "modified_at": getattr(model, 'modified_at', 'Desconocido'),
+                        "engine": "Ollama"
+                    }
+            return {"error": f"Modelo {self.model_name} no encontrado"}
         except Exception as e:
-            return {
-                "cache_path": None,
-                "size_mb": 0,
-                "is_downloaded": False,
-                "error": str(e)
-            }
+            return {"error": str(e)}
 
     def get_status(self):
         cache_info = self.get_model_cache_info()
@@ -297,71 +184,18 @@ class IAEngine:
 
     def generate(self, prompt, max_new_tokens=120, temperature=0.3):
         """
-        Generación optimizada para asistente nutricional usando el engine apropiado
+        Generación usando DeepSeek-R1 via Ollama
         """
         if not self.is_ready():
-            raise RuntimeError("El modelo no está listo o falló la carga.")
+            raise RuntimeError("DeepSeek-R1 no está disponible. Verifica que Ollama esté corriendo y el modelo esté descargado.")
         
-        if self.current_engine == "huggingface":
-            return self._generate_huggingface(prompt, max_new_tokens, temperature)
-        elif self.current_engine == "ollama":
+        if self.current_engine == "ollama":
             return self._generate_ollama(prompt, max_new_tokens, temperature)
         else:
-            raise RuntimeError(f"Engine no soportado: {self.current_engine}")
-
-    def _generate_huggingface(self, prompt, max_new_tokens=120, temperature=0.3):
-        """Generación usando HuggingFace (Phi-3)"""
-        import threading
-        import time
-        
-        # Variable para almacenar resultado
-        result = {"response": None, "error": None}
-        
-        def generate_with_timeout():
-            try:
-                inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-                with torch.no_grad():
-                    outputs = self.model.generate(
-                        **inputs,
-                        max_new_tokens=max_new_tokens,
-                        do_sample=True,
-                        temperature=temperature,
-                        top_p=0.9,  # Más selectivo en las opciones
-                        top_k=50,   # Mayor diversidad controlada  
-                        repetition_penalty=1.1,  # Reducido para mejor velocidad
-                        no_repeat_ngram_size=2,   # Reducido para mejor velocidad
-                        use_cache=True,  # CRÍTICO: Habilitar caché KV para usar GPU eficientemente
-                        pad_token_id=self.tokenizer.eos_token_id
-                    )
-                result["response"] = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            except Exception as e:
-                result["error"] = str(e)
-        
-        # Ejecutar generación en thread separado
-        thread = threading.Thread(target=generate_with_timeout)
-        thread.daemon = True
-        thread.start()
-        thread.join(timeout=30)  # Reducido a 30 segundos para forzar eficiencia GPU
-        
-        # Si el thread aún está vivo, significa que está siendo muy lento
-        if thread.is_alive():
-            print("[IAEngine] Timeout después de 30 segundos - posible problema de GPU")
-            response = self._get_fallback_message()
-        elif result["error"]:
-            print(f"[IAEngine] Error en generación: {result['error']}")
-            response = self._get_fallback_message()
-        else:
-            response = result["response"]
-        
-        # Limpiar respuesta: eliminar eco del prompt si lo hay
-        if response.lower().startswith(prompt.lower()):
-            response = response[len(prompt):].lstrip("\n :.-")
-        # Limitar a 3 líneas para mayor naturalidad
-        response = "\n".join(response.splitlines()[:3]).strip()
-        return response
+            raise RuntimeError(f"Engine no soportado: {self.current_engine}. Solo se soporta Ollama con DeepSeek-R1.")
 
     def _generate_ollama(self, prompt, max_new_tokens=300, temperature=0.3):
-        """Generación usando Ollama (DeepSeek-R1) 🔥 ULTRA AGRESIVO PARA GPU"""
+        """Generación usando Ollama (DeepSeek-R1) [HOT] ULTRA AGRESIVO PARA GPU"""
         try:
             # CONFIGURACIÓN ULTRA AGRESIVA - 99% GPU, 1% CPU
             options = {
@@ -371,7 +205,7 @@ class IAEngine:
                 'top_k': 30,         # Vocabulario más restringido
                 'repeat_penalty': 1.1,  # Evitar repeticiones
                 'stop': ['Usuario:', 'Pregunta:', '\n\nUsuario:', 'user:', '\nuser:'],  # Solo stop en cambios de turno
-                # 🔥🔥🔥 CONFIGURACIONES ULTRA AGRESIVAS PARA GPU 🔥🔥🔥
+                # [HOT][HOT][HOT] CONFIGURACIONES ULTRA AGRESIVAS PARA GPU [HOT][HOT][HOT]
                 'num_gpu': 1,           # FORZAR GPU AL 100%
                 'num_thread': 1,        # SOLO 1 THREAD CPU (MÍNIMO)
                 'numa': False,          # Sin NUMA para GPU
@@ -386,8 +220,8 @@ class IAEngine:
                 'tensor_split': None    # No dividir tensores
             }
             
-            print(f"[IAEngine] 🔥🔥🔥 GENERANDO CON GPU AL MÁXIMO - DeepSeek-R1 ULTRA AGRESIVO, prompt length: {len(prompt)}")
-            print(f"[IAEngine] 🚀 Configuración: 999 capas GPU, 1 thread CPU, sin límites VRAM")
+            print(f"[IAEngine] [HOT][HOT][HOT] GENERANDO CON GPU AL MÁXIMO - DeepSeek-R1 ULTRA AGRESIVO, prompt length: {len(prompt)}")
+            print(f"[IAEngine] [STARTUP] Configuración: 999 capas GPU, 1 thread CPU, sin límites VRAM")
             
             response = self.ollama_client.chat(
                 model=self.model_name,
@@ -399,14 +233,14 @@ class IAEngine:
             
             # Extraer el contenido completo de la respuesta
             message_content = response.get('message', {}).get('content', '')
-            print(f"[IAEngine] 🔥✅ RESPUESTA GPU ULTRA AGRESIVA RECIBIDA, length: {len(message_content)}")
+            print(f"[IAEngine] [HOT][OK] RESPUESTA GPU ULTRA AGRESIVA RECIBIDA, length: {len(message_content)}")
             
             # NO limitar líneas para DeepSeek-R1 - permitir respuestas completas
             return message_content.strip()
             
         except Exception as e:
-            print(f"[IAEngine] ❌ Error en generación GPU ULTRA AGRESIVA: {e}")
-            return self._get_fallback_message()
+            print(f"[IAEngine] [ERROR] Error en generación GPU ULTRA AGRESIVA: {e}")
+            return "Lo siento, el modelo de IA no está disponible en este momento."
 
     def switch_model(self, model_key):
         """Cambiar entre modelos disponibles"""
@@ -420,12 +254,7 @@ class IAEngine:
         print(f"[IAEngine] Cambiando de '{self.current_model_key}' a '{model_key}'...")
         
         # Limpiar modelo actual de memoria
-        if self.current_engine == "huggingface" and self.model is not None:
-            del self.model
-            del self.tokenizer
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        elif self.current_engine == "ollama":
+        if self.current_engine == "ollama":
             self.ollama_client = None
         
         # Configurar nuevo modelo
@@ -435,8 +264,6 @@ class IAEngine:
         self.current_engine = new_model_config["engine"]
         
         # Reset variables
-        self.model = None
-        self.tokenizer = None
         self.ollama_client = None
         self.model_error = None
         
@@ -453,3 +280,251 @@ class IAEngine:
             "available_models": {k: v["description"] for k, v in self.available_models.items()}
         })
         return model_info
+
+    # ===== SISTEMA DE TOOLS/FUNCTIONS PARA CONSULTAS A BASE DE DATOS =====
+
+    def get_available_tools(self):
+        """Obtener lista de tools disponibles para el modelo"""
+        return {
+            "consultar_alimento": {
+                "description": "Consultar información nutricional completa de un alimento específico en la base de datos",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "nombre": {
+                            "type": "string",
+                            "description": "Nombre del alimento a buscar (ej: 'manzana', 'arroz', 'pollo')"
+                        }
+                    },
+                    "required": ["nombre"]
+                }
+            },
+            "obtener_formula": {
+                "description": "Obtener la fórmula específica para un cálculo médico/nutricional",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tipo": {
+                            "type": "string",
+                            "description": "Tipo de fórmula/calculo (ej: 'imc', 'gasto_energetico_basal', 'superficie_corporal')"
+                        }
+                    },
+                    "required": ["tipo"]
+                }
+            },
+            "listar_formulas_disponibles": {
+                "description": "Listar todas las fórmulas médicas disponibles en el sistema",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+        }
+
+    def execute_tool(self, tool_name, parameters):
+        """Ejecutar una tool específica con sus parámetros"""
+        try:
+            if tool_name == "consultar_alimento":
+                return self._tool_consultar_alimento(parameters.get("nombre", ""))
+            elif tool_name == "obtener_formula":
+                return self._tool_obtener_formula(parameters.get("tipo", ""))
+            elif tool_name == "listar_formulas_disponibles":
+                return self._tool_listar_formulas()
+            else:
+                return {"error": f"Tool '{tool_name}' no encontrada"}
+        except Exception as e:
+            return {"error": f"Error ejecutando tool '{tool_name}': {str(e)}"}
+
+    def _tool_consultar_alimento(self, nombre_alimento):
+        """Tool para consultar información de un alimento"""
+        if not nombre_alimento:
+            return {"error": "Nombre de alimento requerido"}
+
+        try:
+            # Importar función de consulta de alimentos
+            from main import get_alimentos_by_name
+
+            columns, rows = get_alimentos_by_name(nombre_alimento)
+
+            if not columns or not rows:
+                return {
+                    "encontrado": False,
+                    "mensaje": f"No se encontró información para '{nombre_alimento}' en la base de datos"
+                }
+
+            # Obtener el alimento más relevante
+            alimento_dict = dict(zip(columns, rows[0]))
+
+            return {
+                "encontrado": True,
+                "alimento": alimento_dict.get('alimento', 'N/A'),
+                "grupo": alimento_dict.get('grupo de alimentos', 'N/A'),
+                "cantidad_base": f"{alimento_dict.get('cantidad', '100')} {alimento_dict.get('unidad', 'g')}",
+                "valores_nutricionales": {
+                    "energia_kcal": alimento_dict.get('energia (kcal)', 'N/A'),
+                    "energia_kj": alimento_dict.get('energia (kj)', 'N/A'),
+                    "proteina_g": alimento_dict.get('proteina (g)', 'N/A'),
+                    "lipidos_g": alimento_dict.get('lipidos (g)', 'N/A'),
+                    "hidratos_carbono_g": alimento_dict.get('hidratos de carbono (g)', 'N/A'),
+                    "fibra_g": alimento_dict.get('fibra (g)', 'N/A'),
+                    "azucar_g": alimento_dict.get('azucar (g)', 'N/A'),
+                    "vitamina_a_mg": alimento_dict.get('vitamina a (mg re)', 'N/A'),
+                    "vitamina_c_mg": alimento_dict.get('acido ascorbico (mg)', 'N/A'),
+                    "calcio_mg": alimento_dict.get('calcio (mg)', 'N/A'),
+                    "hierro_mg": alimento_dict.get('hierro (mg)', 'N/A'),
+                    "sodio_mg": alimento_dict.get('sodio (mg)', 'N/A')
+                }
+            }
+
+        except Exception as e:
+            return {"error": f"Error consultando alimento: {str(e)}"}
+
+    def _tool_obtener_formula(self, tipo_formula):
+        """Tool para obtener una fórmula específica"""
+        if not tipo_formula:
+            return {"error": "Tipo de fórmula requerido"}
+
+        try:
+            import json
+            import os
+
+            # Cargar fórmulas desde JSON
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            formulas_path = os.path.join(current_dir, "data_formulas.json")
+
+            with open(formulas_path, encoding="utf-8") as f:
+                formulas = json.load(f)
+
+            # Buscar fórmula por tipo
+            formula_encontrada = None
+            for key, formula in formulas.items():
+                if tipo_formula.lower() in key.lower() or tipo_formula.lower() in formula.get('nombre', '').lower():
+                    formula_encontrada = formula
+                    break
+
+            if not formula_encontrada:
+                return {
+                    "encontrada": False,
+                    "mensaje": f"No se encontró fórmula para '{tipo_formula}'"
+                }
+
+            return {
+                "encontrada": True,
+                "tipo": tipo_formula,
+                "nombre": formula_encontrada.get('nombre', 'N/A'),
+                "descripcion": formula_encontrada.get('descripcion', 'N/A'),
+                "formula": formula_encontrada.get('formula', 'N/A'),
+                "parametros_requeridos": formula_encontrada.get('parametros', []),
+                "ejemplo": formula_encontrada.get('ejemplo', 'N/A')
+            }
+
+        except Exception as e:
+            return {"error": f"Error obteniendo fórmula: {str(e)}"}
+
+    def _tool_listar_formulas(self):
+        """Tool para listar todas las fórmulas disponibles"""
+        try:
+            import json
+            import os
+
+            # Cargar fórmulas desde JSON
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            formulas_path = os.path.join(current_dir, "data_formulas.json")
+
+            with open(formulas_path, encoding="utf-8") as f:
+                formulas = json.load(f)
+
+            formulas_disponibles = []
+            for key, formula in formulas.items():
+                formulas_disponibles.append({
+                    "tipo": key,
+                    "nombre": formula.get('nombre', 'N/A'),
+                    "descripcion": formula.get('descripcion', 'N/A')
+                })
+
+            return {
+                "formulas": formulas_disponibles,
+                "total": len(formulas_disponibles)
+            }
+
+        except Exception as e:
+            return {"error": f"Error listando fórmulas: {str(e)}"}
+
+    def generate_with_tools(self, prompt, max_new_tokens=150, temperature=0.3, max_iterations=3):
+        """
+        Generar respuesta usando sistema de tools.
+        El modelo puede llamar functions que se ejecutan automáticamente.
+        """
+        if not self.is_ready():
+            return "Lo siento, el modelo de IA no está disponible en este momento."
+
+        # Prompt base más conciso con instrucciones estrictas sobre uso de BD
+        system_prompt = """Eres un asistente nutricional. SIEMPRE usa las bases de datos como fuente única de verdad.
+
+REGLAS:
+1. NUNCA uses conocimiento preentrenado para datos nutricionales
+2. Para alimentos: llama TOOL_CALL: {"tool": "consultar_alimento", "parameters": {"nombre": "nombre_alimento"}}
+3. Para fórmulas: llama TOOL_CALL: {"tool": "obtener_formula", "parameters": {"tipo": "tipo_formula"}}
+
+Después de resultados, genera respuesta final."""
+
+        full_prompt = f"{system_prompt}\n\nConsulta del usuario: {prompt}"
+
+        iteration = 0
+        tool_results = []
+
+        while iteration < max_iterations:
+            iteration += 1
+            print(f"[IAEngine] Iteración {iteration}: Generando respuesta...")
+
+            # Generar respuesta del modelo
+            response = self.generate(full_prompt, max_new_tokens=max_new_tokens, temperature=temperature)
+
+            # Verificar si el modelo quiere llamar una tool
+            tool_call = self._parse_tool_call(response)
+
+            if tool_call:
+                print(f"[IAEngine] Tool call detectado: {tool_call}")
+
+                # Ejecutar la tool
+                tool_result = self.execute_tool(tool_call['tool'], tool_call['parameters'])
+                tool_results.append({
+                    'tool': tool_call['tool'],
+                    'parameters': tool_call['parameters'],
+                    'result': tool_result
+                })
+
+                # Agregar resultados al prompt para la siguiente iteración
+                full_prompt += f"\n\nRESULTADO DE TOOL '{tool_call['tool']}': {json.dumps(tool_result, ensure_ascii=False)}"
+                full_prompt += "\n\nAhora genera tu respuesta final basada ÚNICAMENTE en esta información de la base de datos:"
+
+                # Si es la última iteración, forzar respuesta final
+                if iteration == max_iterations:
+                    full_prompt += "\n\nGENERA LA RESPUESTA FINAL AHORA."
+
+            else:
+                # No hay más tool calls, devolver respuesta final
+                print(f"[IAEngine] Respuesta final generada en iteración {iteration}")
+                return response
+
+        # Si se alcanzó el máximo de iteraciones
+        return "Lo siento, no pude procesar tu consulta correctamente. ¿Puedes reformular tu pregunta?"
+
+    def _parse_tool_call(self, response):
+        """Parsear respuesta del modelo para detectar llamadas a tools"""
+        import re
+        import json
+
+        # Buscar patrón TOOL_CALL
+        tool_match = re.search(r'TOOL_CALL:\s*(\{.*?\})', response, re.DOTALL)
+
+        if tool_match:
+            try:
+                tool_data = json.loads(tool_match.group(1))
+                if 'tool' in tool_data and 'parameters' in tool_data:
+                    return tool_data
+            except json.JSONDecodeError:
+                pass
+
+        return None

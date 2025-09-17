@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.5] - 2025-09-17
+### 🧹 CARACTERÍSTICA MAYOR: Sistema Exclusivo DeepSeek-R1 Sin Fallbacks
+- **Eliminación total de fallbacks**: Removidos todos los métodos de respuesta hardcoded y servidor de respaldo
+- **DeepSeek-R1 exclusivo**: Sistema configurado únicamente para usar DeepSeek-R1 via Ollama
+- **Parsing inteligente de thinking**: Separación automática entre proceso de razonamiento y respuesta final
+- **Timeout extendido**: Aumentado a 5 minutos para permitir razonamiento profundo de DeepSeek-R1
+- **Limpieza completa**: Eliminados todos los métodos HuggingFace, Phi-3 y lógica de fallback
+- **Actualización de versiones**: VERSION.txt, package.json y Settings.tsx actualizados a 1.6.5
+
 ## [1.6.4] - 2025-09-10
 ### 📦 Respaldo integral y sincronización total
 - **Se sube TODO el proyecto**: backend, frontend, scripts, documentación, changelogs y archivos de configuración.
