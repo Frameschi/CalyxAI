@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.7.0] - 2025-09-19
+### 🧠 CARACTERÍSTICA MAYOR: Sistema de Prompts Optimizado y Separado
+- **Separación clara de contextos**: Sistema de prompts completamente separado entre conversaciones normales y cálculos médicos
+- **Prompt universal**: Implementación de instrucciones universales de formateo para todos los cálculos médicos
+- **Eliminación de código redundante**: Removida función `generate_for_calculations` y prompts simplificados innecesarios
+- **Optimización de tokens**: Sistema dinámico de asignación de tokens basado en complejidad de fórmulas (800-1500 tokens)
+- **Limpieza completa del código**: Eliminados residuos de prompts antiguos y lógica duplicada
+
+### ⚡ OPTIMIZACIÓN: Arquitectura de IA Mejorada
+- **Sistema de detección inteligente**: 13 fórmulas médicas detectadas automáticamente con patrones expandidos
+- **Conversaciones naturales**: Respuestas breves y contextuales para interacciones normales
+- **Cálculos formateados**: Presentación estructurada en console blocks para resultados médicos
+- **Separación de responsabilidades**: Backend maneja cálculos, frontend presenta resultados
+- **Actualización de versiones**: VERSION.txt, package.json, Settings.tsx y archivos de distribución actualizados a 1.7.0
+
+### 🔧 Mejoras técnicas y estabilidad
+- **Validación sintáctica**: Verificación completa de archivos Python después de cambios
+- **Gestión de memoria**: Optimización de recursos para cálculos complejos
+- **Error handling**: Mejor manejo de errores en detección y procesamiento de fórmulas
+- **Code cleanup**: Eliminación de funciones obsoletas y referencias antiguas
+
 ## [1.6.5] - 2025-09-17
 ### 🧹 CARACTERÍSTICA MAYOR: Sistema Exclusivo DeepSeek-R1 Sin Fallbacks
 - **Eliminación total de fallbacks**: Removidos todos los métodos de respuesta hardcoded y servidor de respaldo

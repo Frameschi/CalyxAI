@@ -182,7 +182,7 @@ class IAEngine:
         
         return status_info
 
-    def generate(self, prompt, max_new_tokens=120, temperature=0.3):
+    def generate(self, prompt, system_prompt=None, max_new_tokens=120, temperature=0.3, top_p=0.8):
         """
         Generación usando DeepSeek-R1 via Ollama
         """
@@ -190,18 +190,18 @@ class IAEngine:
             raise RuntimeError("DeepSeek-R1 no está disponible. Verifica que Ollama esté corriendo y el modelo esté descargado.")
         
         if self.current_engine == "ollama":
-            return self._generate_ollama(prompt, max_new_tokens, temperature)
+            return self._generate_ollama(prompt, system_prompt, max_new_tokens, temperature, top_p)
         else:
             raise RuntimeError(f"Engine no soportado: {self.current_engine}. Solo se soporta Ollama con DeepSeek-R1.")
 
-    def _generate_ollama(self, prompt, max_new_tokens=300, temperature=0.3):
+    def _generate_ollama(self, user_prompt, system_prompt=None, max_new_tokens=300, temperature=0.3, top_p=0.8):
         """Generación usando Ollama (DeepSeek-R1) [HOT] ULTRA AGRESIVO PARA GPU"""
         try:
             # CONFIGURACIÓN ULTRA AGRESIVA - 99% GPU, 1% CPU
             options = {
                 'num_predict': max(400, max_new_tokens),  # Suficiente para respuestas completas
-                'temperature': 0.2,  # Más determinístico, menos divagación
-                'top_p': 0.8,        # Más enfocado en tokens relevantes
+                'temperature': temperature,  # Usar el parámetro pasado
+                'top_p': top_p,        # Usar el parámetro pasado
                 'top_k': 30,         # Vocabulario más restringido
                 'repeat_penalty': 1.1,  # Evitar repeticiones
                 'stop': ['Usuario:', 'Pregunta:', '\n\nUsuario:', 'user:', '\nuser:'],  # Solo stop en cambios de turno
@@ -220,14 +220,18 @@ class IAEngine:
                 'tensor_split': None    # No dividir tensores
             }
             
-            print(f"[IAEngine] [HOT][HOT][HOT] GENERANDO CON GPU AL MÁXIMO - DeepSeek-R1 ULTRA AGRESIVO, prompt length: {len(prompt)}")
+            # Construir messages con roles separados
+            messages = []
+            if system_prompt:
+                messages.append({'role': 'system', 'content': system_prompt})
+            messages.append({'role': 'user', 'content': user_prompt})
+            
+            print(f"[IAEngine] [HOT][HOT][HOT] GENERANDO CON GPU AL MÁXIMO - DeepSeek-R1 ULTRA AGRESIVO, user_prompt length: {len(user_prompt)}")
             print(f"[IAEngine] [STARTUP] Configuración: 999 capas GPU, 1 thread CPU, sin límites VRAM")
             
             response = self.ollama_client.chat(
                 model=self.model_name,
-                messages=[
-                    {'role': 'user', 'content': prompt}
-                ],
+                messages=messages,
                 options=options
             )
             
@@ -451,7 +455,7 @@ class IAEngine:
         except Exception as e:
             return {"error": f"Error listando fórmulas: {str(e)}"}
 
-    def generate_with_tools(self, prompt, max_new_tokens=150, temperature=0.3, max_iterations=3):
+    def generate_with_tools(self, user_prompt, system_prompt_extra="", max_new_tokens=150, temperature=0.3, top_p=0.8, max_iterations=3):
         """
         Generar respuesta usando sistema de tools.
         El modelo puede llamar functions que se ejecutan automáticamente.
@@ -459,17 +463,30 @@ class IAEngine:
         if not self.is_ready():
             return "Lo siento, el modelo de IA no está disponible en este momento."
 
-        # Prompt base más conciso con instrucciones estrictas sobre uso de BD
-        system_prompt = """Eres un asistente nutricional. SIEMPRE usa las bases de datos como fuente única de verdad.
+        # Prompt base más conciso con instrucciones específicas según el contexto
+        base_system_prompt = """Eres Calyx, un asistente nutricional profesional y cercano.
 
-REGLAS:
-1. NUNCA uses conocimiento preentrenado para datos nutricionales
-2. Para alimentos: llama TOOL_CALL: {"tool": "consultar_alimento", "parameters": {"nombre": "nombre_alimento"}}
-3. Para fórmulas: llama TOOL_CALL: {"tool": "obtener_formula", "parameters": {"tipo": "tipo_formula"}}
+Tu rol es conversar de manera breve, clara y natural con el usuario sobre temas nutricionales.
 
-Después de resultados, genera respuesta final."""
+REQUISITOS GENERALES:
+- Responde en pocas frases (1 a 3 máximo), sin extenderte innecesariamente
+- Mantén un tono profesional, pero cercano y humano
+- Ajusta tu respuesta al contexto de la conversación
+- No inventes información nutricional que no conozcas
+- Para consultas sobre alimentos: usa TOOL_CALL cuando necesites datos específicos
+- Para cálculos médicos: formatea según las instrucciones específicas cuando se proporcionen
 
-        full_prompt = f"{system_prompt}\n\nConsulta del usuario: {prompt}"
+INSTRUCCIONES PARA MANEJO DE HISTORIAL:
+- Responde ÚNICAMENTE al último mensaje del usuario.
+- Ignora solicitudes antiguas y NO ejecutes acciones basadas en ellas (como recalcular IMC y otras fórmulas automáticamente).
+- Usa el historial de conversación opcionalmente para enriquecer tu respuesta de manera natural, pero sin repetir cálculos o acciones previas.
+
+IMPORTANTE: Si recibes instrucciones específicas para cálculos médicos, prioriza esas reglas sobre las generales."""
+
+        # Combinar system prompt base con extra (historial)
+        full_system_prompt = base_system_prompt
+        if system_prompt_extra:
+            full_system_prompt += "\n\n" + system_prompt_extra
 
         iteration = 0
         tool_results = []
@@ -478,8 +495,8 @@ Después de resultados, genera respuesta final."""
             iteration += 1
             print(f"[IAEngine] Iteración {iteration}: Generando respuesta...")
 
-            # Generar respuesta del modelo
-            response = self.generate(full_prompt, max_new_tokens=max_new_tokens, temperature=temperature)
+            # Generar respuesta del modelo con system y user separados
+            response = self.generate(user_prompt, system_prompt=full_system_prompt, max_new_tokens=max_new_tokens, temperature=temperature, top_p=top_p)
 
             # Verificar si el modelo quiere llamar una tool
             tool_call = self._parse_tool_call(response)
@@ -495,13 +512,13 @@ Después de resultados, genera respuesta final."""
                     'result': tool_result
                 })
 
-                # Agregar resultados al prompt para la siguiente iteración
-                full_prompt += f"\n\nRESULTADO DE TOOL '{tool_call['tool']}': {json.dumps(tool_result, ensure_ascii=False)}"
-                full_prompt += "\n\nAhora genera tu respuesta final basada ÚNICAMENTE en esta información de la base de datos:"
+                # Agregar resultados al user_prompt para la siguiente iteración
+                user_prompt += f"\n\nRESULTADO DE TOOL '{tool_call['tool']}': {json.dumps(tool_result, ensure_ascii=False)}"
+                user_prompt += "\n\nAhora genera tu respuesta final basada ÚNICAMENTE en esta información de la base de datos:"
 
                 # Si es la última iteración, forzar respuesta final
                 if iteration == max_iterations:
-                    full_prompt += "\n\nGENERA LA RESPUESTA FINAL AHORA."
+                    user_prompt += "\n\nGENERA LA RESPUESTA FINAL AHORA."
 
             else:
                 # No hay más tool calls, devolver respuesta final
@@ -510,6 +527,43 @@ Después de resultados, genera respuesta final."""
 
         # Si se alcanzó el máximo de iteraciones
         return "Lo siento, no pude procesar tu consulta correctamente. ¿Puedes reformular tu pregunta?"
+
+    def build_calculation_prompt(self, user_prompt, calculation_data):
+        """
+        Construir prompt optimizado para cálculos médicos.
+        Centraliza toda la lógica de formateo de cálculos en ai_engine.py
+        """
+        import json
+
+        enhanced_prompt = f"""{user_prompt}
+
+DATOS_CALCULO_MEDICO = {json.dumps(calculation_data, ensure_ascii=False)}
+
+INSTRUCCIONES:
+
+Recibirás distintos datos de entrada y una fórmula nutricional que puede variar (IMC, TMB Mifflin, Composición Corporal, etc.).
+Tu tarea es generar SIEMPRE un desglose de cálculo dentro de un bloque de texto estilo consola.
+
+FORMATO FIJO A RESPETAR (no cambies el orden de las secciones):
+1. Encabezado: "> Cálculo de [Nombre de la fórmula]"
+2. DATOS DE ENTRADA: listar solo los parámetros relevantes para esta fórmula (ej. peso, estatura, edad, sexo, %grasa, etc.)
+3. FÓRMULA: escribir la fórmula matemática general que se usa
+4. SUSTITUCIÓN: reemplazar las variables con los valores del caso
+5. CÁLCULO: mostrar los pasos intermedios hasta llegar al resultado
+6. RESULTADO: destacar el valor final (redondeado si corresponde)
+7. INTERPRETACIÓN: explicación breve y profesional del significado del resultado
+
+REQUISITOS DE ESTILO:
+- Todo el contenido debe estar en texto plano formateado (sin bloques de código como ```txt).
+- Usa viñetas (-) para los datos de entrada.
+- No inventes parámetros que no fueron dados.
+- Mantén un lenguaje profesional, claro y conciso.
+- ESCRIBE DE MANERA ECONÓMICA: cada palabra cuenta. Evita frases redundantes como "como podemos observar" o "es importante mencionar".
+- Para fórmulas simples (2 parámetros): limita cada sección a 1-2 líneas. Para fórmulas complejas: puedes ser más detallado.
+- Ve directo al punto, sin introducciones innecesarias.
+- Puedes usar un emoji ➡ o ✅ para resaltar el resultado final, pero no cambies el orden de las secciones."""
+
+        return enhanced_prompt
 
     def _parse_tool_call(self, response):
         """Parsear respuesta del modelo para detectar llamadas a tools"""

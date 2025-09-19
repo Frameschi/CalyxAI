@@ -1,7 +1,7 @@
 {
   "name": "calyx-ai",
   "productName": "Calyx AI",
-  "version": "1.6.5",
+  "version": "1.7.0",
   "description": "AI-powered medical calculation assistant with DeepSeek-R1 thinking transparency and GPU optimization",
   "author": {
     "name": "ARCROSS",
@@ -15,7 +15,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "build-electron": "tsc -p tsconfig.electron.json",
+    "build-electron": "if not exist dist-electron mkdir dist-electron && copy electron\\* dist-electron\\",
     "start": "npm run build-electron && electron .",
     "build-app": "npm run build && npm run build-electron",
     "dist": "npm run build-app && electron-builder",
