@@ -182,7 +182,7 @@ class IAEngine:
         
         return status_info
 
-    def generate(self, prompt, max_new_tokens=120, temperature=0.3):
+    def generate(self, prompt, max_new_tokens=120, temperature=0.3, top_p=0.8):
         """
         Generación usando DeepSeek-R1 via Ollama
         """
@@ -190,18 +190,18 @@ class IAEngine:
             raise RuntimeError("DeepSeek-R1 no está disponible. Verifica que Ollama esté corriendo y el modelo esté descargado.")
         
         if self.current_engine == "ollama":
-            return self._generate_ollama(prompt, max_new_tokens, temperature)
+            return self._generate_ollama(prompt, max_new_tokens, temperature, top_p)
         else:
             raise RuntimeError(f"Engine no soportado: {self.current_engine}. Solo se soporta Ollama con DeepSeek-R1.")
 
-    def _generate_ollama(self, prompt, max_new_tokens=300, temperature=0.3):
+    def _generate_ollama(self, prompt, max_new_tokens=300, temperature=0.3, top_p=0.8):
         """Generación usando Ollama (DeepSeek-R1) [HOT] ULTRA AGRESIVO PARA GPU"""
         try:
             # CONFIGURACIÓN ULTRA AGRESIVA - 99% GPU, 1% CPU
             options = {
                 'num_predict': max(400, max_new_tokens),  # Suficiente para respuestas completas
-                'temperature': 0.2,  # Más determinístico, menos divagación
-                'top_p': 0.8,        # Más enfocado en tokens relevantes
+                'temperature': temperature,  # Usar el parámetro pasado
+                'top_p': top_p,        # Usar el parámetro pasado
                 'top_k': 30,         # Vocabulario más restringido
                 'repeat_penalty': 1.1,  # Evitar repeticiones
                 'stop': ['Usuario:', 'Pregunta:', '\n\nUsuario:', 'user:', '\nuser:'],  # Solo stop en cambios de turno
@@ -451,7 +451,7 @@ class IAEngine:
         except Exception as e:
             return {"error": f"Error listando fórmulas: {str(e)}"}
 
-    def generate_with_tools(self, prompt, max_new_tokens=150, temperature=0.3, max_iterations=3):
+    def generate_with_tools(self, prompt, max_new_tokens=150, temperature=0.3, top_p=0.8, max_iterations=3):
         """
         Generar respuesta usando sistema de tools.
         El modelo puede llamar functions que se ejecutan automáticamente.
@@ -459,15 +459,20 @@ class IAEngine:
         if not self.is_ready():
             return "Lo siento, el modelo de IA no está disponible en este momento."
 
-        # Prompt base más conciso con instrucciones estrictas sobre uso de BD
-        system_prompt = """Eres un asistente nutricional. SIEMPRE usa las bases de datos como fuente única de verdad.
+        # Prompt base más conciso con instrucciones específicas según el contexto
+        system_prompt = """Eres un asistente nutricional profesional y cercano.
 
-REGLAS:
-1. NUNCA uses conocimiento preentrenado para datos nutricionales
-2. Para alimentos: llama TOOL_CALL: {"tool": "consultar_alimento", "parameters": {"nombre": "nombre_alimento"}}
-3. Para fórmulas: llama TOOL_CALL: {"tool": "obtener_formula", "parameters": {"tipo": "tipo_formula"}}
+Tu rol es conversar de manera breve, clara y natural con el usuario sobre temas nutricionales.
 
-Después de resultados, genera respuesta final."""
+REQUISITOS GENERALES:
+- Responde en pocas frases (1 a 3 máximo), sin extenderte innecesariamente
+- Mantén un tono profesional, pero cercano y humano
+- Ajusta tu respuesta al contexto de la conversación
+- No inventes información nutricional que no conozcas
+- Para consultas sobre alimentos: usa TOOL_CALL cuando necesites datos específicos
+- Para cálculos médicos: formatea según las instrucciones específicas cuando se proporcionen
+
+IMPORTANTE: Si recibes instrucciones específicas para cálculos médicos, prioriza esas reglas sobre las generales."""
 
         full_prompt = f"{system_prompt}\n\nConsulta del usuario: {prompt}"
 
@@ -479,7 +484,7 @@ Después de resultados, genera respuesta final."""
             print(f"[IAEngine] Iteración {iteration}: Generando respuesta...")
 
             # Generar respuesta del modelo
-            response = self.generate(full_prompt, max_new_tokens=max_new_tokens, temperature=temperature)
+            response = self.generate(full_prompt, max_new_tokens=max_new_tokens, temperature=temperature, top_p=top_p)
 
             # Verificar si el modelo quiere llamar una tool
             tool_call = self._parse_tool_call(response)

@@ -360,9 +360,9 @@ export default function Chat() {
         const timeoutId = window.setTimeout(() => {
           console.log('[DEBUG Frontend] Timeout alcanzado, abortando petición');
           controller.abort();
-        }, 300000); // 5 minutos para DeepSeek-R1
+        }, 600000); // 10 minutos para DeepSeek-R1
         
-        console.log(`[DEBUG Frontend] Iniciando fetch a ${API_URL}/chat con timeout de 5 minutos`);
+        console.log(`[DEBUG Frontend] Iniciando fetch a ${API_URL}/chat con timeout de 10 minutos`);
         console.log(`[DEBUG Frontend] Prompt length: ${promptFinal.length} caracteres`);
         
         try {
@@ -605,7 +605,7 @@ export default function Chat() {
             {loading && (
               <div className="max-w-4xl">
                 <div className="text-gray-500 dark:text-gray-400 italic">
-                  {selectedModel === 'deepseek-r1' ? "🧬 Analizando con razonamiento avanzado..." : "Procesando respuesta..."}
+                  {selectedModel === 'deepseek-r1' ? "Analizando con razonamiento avanzado..." : "Procesando respuesta..."}
                 </div>
               </div>
             )}

@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import sqlite3
+import json
 from threading import Lock
 from ai_engine import IAEngine
 # Importar módulos de utilidades y cálculos
@@ -52,22 +53,281 @@ def get_fallback_message():
 def parse_deepseek_response(response):
     """
     Parsea respuesta de DeepSeek-R1 para separar thinking del mensaje final.
-    DeepSeek-R1 responde con: <think>razonamiento</think> mensaje final
+    Maneja diferentes formatos de thinking que puede usar DeepSeek-R1.
+    También maneja respuestas que empiezan con "json { " como JSON directo.
+    """
+    import re
+    import json
+    
+    # Primero verificar si la respuesta es JSON directo (empieza con "json { ")
+    json_pattern = r'^\s*json\s*\{'
+    if re.match(json_pattern, response.strip(), re.IGNORECASE):
+        try:
+            # Extraer el JSON de la respuesta
+            json_match = re.search(r'json\s*(\{.*\})', response, re.DOTALL | re.IGNORECASE)
+            if json_match:
+                json_data = json.loads(json_match.group(1))
+                # Si es JSON válido, devolver como respuesta final sin thinking
+                return None, json.dumps(json_data, ensure_ascii=False)
+        except json.JSONDecodeError:
+            pass  # Continuar con el parsing normal
+    
+    # Patrones posibles de thinking
+    patterns = [
+        r'<think>(.*?)</think>',  # <think>contenido</think>
+        r'<thinking>(.*?)</thinking>',  # <thinking>contenido</thinking>
+        r'```thinking\s*(.*?)\s*```',  # ```thinking contenido ```
+        r'^\s*Thinking:(.*?)(?=\n\n|\n[A-Z]|$)',  # Thinking: contenido
+        r'^\s*Razonamiento:(.*?)(?=\n\n|\n[A-Z]|$)',  # Razonamiento: contenido
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+        if match:
+            thinking_content = match.group(1).strip()
+            # Remover el bloque de thinking del mensaje final
+            final_message = re.sub(pattern, '', response, flags=re.DOTALL | re.IGNORECASE).strip()
+            # Limpiar líneas vacías extras
+            final_message = re.sub(r'\n\s*\n\s*\n+', '\n\n', final_message)
+            return thinking_content, final_message
+    
+    # Si no encuentra patrón específico, buscar líneas que parezcan thinking
+    lines = response.split('\n')
+    thinking_lines = []
+    content_lines = []
+    in_thinking = False
+    
+    for line in lines:
+        line_lower = line.lower().strip()
+        if line_lower.startswith(('think:', 'thinking:', 'razonamiento:', 'razonando:')) or '<think' in line_lower:
+            in_thinking = True
+            thinking_lines.append(line)
+        elif in_thinking and (line.strip() == '' or len(line.strip()) < 10):
+            # Línea vacía o muy corta, podría ser fin del thinking
+            continue
+        elif in_thinking and line_lower.startswith(('respuesta:', 'conclusión:', 'finalmente:')):
+            # Fin del thinking
+            in_thinking = False
+            content_lines.append(line)
+        elif in_thinking:
+            thinking_lines.append(line)
+        else:
+            content_lines.append(line)
+    
+    if thinking_lines:
+        thinking_content = '\n'.join(thinking_lines).strip()
+        final_message = '\n'.join(content_lines).strip()
+        return thinking_content, final_message
+    
+    # No hay thinking detectable, devolver respuesta completa
+    return None, response
+
+def get_tokens_for_formula(formula_key):
+    """Determina el número óptimo de tokens basado en la complejidad de la fórmula"""
+    # Cálculos ultra-extensos que requieren muchos tokens
+    ultra_complex = ['composicion_corporal']
+    if formula_key in ultra_complex:
+        return 1500  # Suficiente para desglose completo de múltiples fórmulas
+    
+    # Cálculos complejos con varios parámetros
+    complex_formulas = ['tmb_harris_benedict', 'geb_schofield', 'calculo_calorico']
+    if formula_key in complex_formulas:
+        return 1000
+    
+    # Cálculos simples - aumentar para asegurar completitud
+    return 800  # Suficiente para IMC y cálculos básicos con formato completo
+
+def calculate_formula_from_json(formula_name, message):
+    """
+    Calcula una fórmula médica consultando data_formulas.json y extrayendo parámetros del mensaje.
+    """
+    import json
+    import re
+    import os
+    
+    try:
+        # Cargar data_formulas.json
+        formulas_path = os.path.join(os.path.dirname(__file__), "data_formulas.json")
+        with open(formulas_path, 'r', encoding='utf-8') as f:
+            formulas_data = json.load(f)
+        
+        # Verificar si la fórmula existe
+        if formula_name not in formulas_data:
+            return None
+            
+        formula = formulas_data[formula_name]
+        
+        # Extraer parámetros del mensaje según la definición de la fórmula
+        extracted_params = {}
+        
+        for param in formula["parametros"]:
+            param_name = param["nombre"]
+            param_type = param["tipo"]
+            param_unit = param.get("unidad", "")
+            
+            # Crear patrón de búsqueda para este parámetro
+            if param_unit in ["kg", "kilogramos"]:
+                pattern = r'(\d+(?:\.\d+)?)\s*(?:kg|kilogramos?)'
+            elif param_unit in ["m", "metros"]:
+                pattern = r'(\d+(?:\.\d+)?)\s*(?:m|metros?)'
+            elif param_unit in ["cm", "centímetros"]:
+                pattern = r'(\d+(?:\.\d+)?)\s*(?:cm|centímetros?)'
+            elif param_unit == "años":
+                pattern = r'(\d+)\s*(?:años?|edad)'
+            elif param_name == "sexo":
+                pattern = r'(?:hombre|varón|masculino|m)\s*(?:\w*\s*)*|(?:mujer|femenino|f)\s*(?:\w*\s*)*'
+            else:
+                continue
+                
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                if param_name == "sexo":
+                    # Determinar sexo basado en palabras clave
+                    text_found = match.group(0).lower()
+                    if any(word in text_found for word in ['hombre', 'varón', 'masculino', 'm']):
+                        value = "M"
+                    elif any(word in text_found for word in ['mujer', 'femenino', 'f']):
+                        value = "F"
+                    else:
+                        value = "M"  # default
+                else:
+                    value = float(match.group(1)) if param_type == "float" else int(match.group(1))
+                extracted_params[param_name] = value
+        
+        # Verificar que tenemos todos los parámetros necesarios
+        required_params = [p["nombre"] for p in formula["parametros"]]
+        if not all(param in extracted_params for param in required_params):
+            return None
+            
+        # Calcular IMC
+        if formula_name == "imc":
+            peso = extracted_params["peso"]
+            altura = extracted_params["altura"]
+            
+            # Cálculos paso a paso
+            altura_cuadrado = round(altura ** 2, 4)
+            imc_value = round(peso / altura_cuadrado, 2)
+            
+            # Determinar interpretación
+            interpretation = "Sin clasificar"
+            for rango in formula["interpretacion"]:
+                if rango["min"] <= imc_value < rango["max"]:
+                    interpretation = rango["texto"]
+                    break
+            
+            # Devolver datos estructurados para que DeepSeek-R1 los formatee creativamente
+            return {
+                "tipo": "calculo_medico",
+                "formula": formula_name.upper(),
+                "nombre_completo": formula["nombre"],
+                "parametros": extracted_params,
+                "calculos": {
+                    "pasos": [
+                        f"Elevar altura al cuadrado: {altura}² = {altura_cuadrado}",
+                        f"Dividir peso entre altura²: {peso} ÷ {altura_cuadrado} = {imc_value}"
+                    ],
+                    "resultado": imc_value,
+                    "unidad": "kg/m²",
+                    "formula_matematica": "IMC = peso / altura²"
+                },
+                "interpretacion": interpretation,
+                "categoria": formula.get("categoria", ""),
+                "descripcion": formula.get("descripcion", "")
+            }
+            
+        # Calcular TMB Harris-Benedict
+        elif formula_name == "tmb_harris_benedict":
+            peso = extracted_params["peso"]
+            altura = extracted_params["altura"]  # en cm
+            edad = extracted_params["edad"]
+            sexo = extracted_params.get("sexo", "M").upper()
+            
+            # Fórmula Harris-Benedict
+            if sexo == "M":  # Hombre
+                constante = 66.5
+                factor_peso = 13.75
+                factor_altura = 5.003
+                factor_edad = 6.775
+                tmb = constante + (factor_peso * peso) + (factor_altura * altura) - (factor_edad * edad)
+            else:  # Mujer
+                constante = 655.1
+                factor_peso = 9.563
+                factor_altura = 1.850
+                factor_edad = 4.676
+                tmb = constante + (factor_peso * peso) + (factor_altura * altura) - (factor_edad * edad)
+            
+            tmb_value = round(tmb, 1)
+            
+            # Determinar interpretación
+            interpretation = "Sin clasificar"
+            for rango in formula["interpretacion"]:
+                if rango["min"] <= tmb_value < rango["max"]:
+                    interpretation = rango["texto"]
+                    break
+            
+            # Devolver datos estructurados
+            return {
+                "tipo": "calculo_medico",
+                "formula": formula_name.upper(),
+                "nombre_completo": formula["nombre"],
+                "parametros": extracted_params,
+                "calculos": {
+                    "pasos": [
+                        f"Constante base: {constante}",
+                        f"Factor peso: {factor_peso} × {peso} = {round(factor_peso * peso, 1)}",
+                        f"Factor altura: {factor_altura} × {altura} = {round(factor_altura * altura, 1)}",
+                        f"Factor edad: {factor_edad} × {edad} = {round(factor_edad * edad, 1)}",
+                        f"Cálculo final: {constante} + {round(factor_peso * peso, 1)} + {round(factor_altura * altura, 1)} - {round(factor_edad * edad, 1)} = {tmb_value}"
+                    ],
+                    "resultado": tmb_value,
+                    "unidad": "kcal/día",
+                    "formula_matematica": f"{'Hombre' if sexo == 'M' else 'Mujer'}: {constante} + ({factor_peso} × peso) + ({factor_altura} × altura) - ({factor_edad} × edad)"
+                },
+                "interpretacion": interpretation,
+                "categoria": formula.get("categoria", ""),
+                "descripcion": formula.get("descripcion", "")
+            }
+            
+    except Exception as e:
+        print(f"[ERROR] Error calculando fórmula {formula_name}: {e}")
+        return None
+    
+    return None
+
+def format_calculation_response(message):
+    """
+    Detecta si el mensaje es un cálculo y lo formatea para console_block.
+    Ahora consulta data_formulas.json para cálculos reales.
     """
     import re
     
-    # Buscar patrón <think> ... </think>
-    think_pattern = r'<think>(.*?)</think>'
-    match = re.search(think_pattern, response, re.DOTALL)
+    # Detectar cálculos de IMC
+    if re.search(r'IMC|índice.*masa.*corporal', message, re.IGNORECASE):
+        result = calculate_formula_from_json("imc", message)
+        if result:
+            return result
     
-    if match:
-        thinking_content = match.group(1).strip()
-        # Remover el bloque <think> del mensaje final
-        final_message = re.sub(think_pattern, '', response, flags=re.DOTALL).strip()
-        return thinking_content, final_message
-    else:
-        # No hay thinking, devolver respuesta completa como mensaje final
-        return None, response
+    # Detectar otros tipos de cálculos (calorías, etc.) - lógica anterior
+    if 'calorías' in message.lower() or 'kcal' in message.lower():
+        # Formatear cálculo de calorías
+        food_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:g|gramos?)\s+(?:de\s+)?([a-zA-Záéíóúñ\s]+)', message, re.IGNORECASE)
+        kcal_match = re.search(r'(\d+(?:\.\d+)?)\s*kcal', message, re.IGNORECASE)
+        
+        if food_match and kcal_match:
+            amount = food_match.group(1)
+            food = food_match.group(2).strip()
+            kcal = kcal_match.group(1)
+            
+            input_text = f"Alimento: {food}\nCantidad: {amount}g"
+            output_text = f"Calorías: {kcal} kcal"
+            
+            return {
+                "title": "Cálculo Calórico",
+                "input": input_text,
+                "output": output_text
+            }
+    
+    return None
 
 # Función para consultar alimentos en la base de datos
 def get_alimentos_by_name(nombre_busqueda, limite=5):
@@ -140,18 +400,112 @@ async def chat(request: Request):
             print("[LOG] /chat error: No prompt provided")
             return JSONResponse({"error": "No prompt provided"}, status_code=400)
 
-        # --- SISTEMA DE TOOLS AUTOMÁTICO: El modelo decidirá cuándo consultar BD ---
-        # El modelo DeepSeek-R1 tiene acceso a tools para consultar alimentos y fórmulas
+        # --- VERIFICAR SI EL USUARIO PIDE CÁLCULO DIRECTO DE FÓRMULA MÉDICA ---
+        import re
+        
+        # Función para extraer solo el último mensaje del usuario del historial
+        def extract_last_user_message(full_prompt):
+            """Extrae solo el último mensaje del usuario del historial de conversación"""
+            lines = full_prompt.strip().split('\n')
+            user_messages = [line.replace('user:', '').strip() for line in lines if line.startswith('user:')]
+            return user_messages[-1] if user_messages else full_prompt
+        
+        # Usar solo el último mensaje del usuario para detección de fórmulas
+        last_user_message = extract_last_user_message(prompt)
+        print(f"[LOG] Último mensaje del usuario: '{last_user_message}'")
+        
+        # Detectar pedidos de cálculos médicos - PATRONES EXPANDIDOS PARA TODAS LAS FÓRMULAS
+        calculation_patterns = {
+            "imc": r'calcula.*imc|imc.*calcula|cuál.*imc|mi.*imc|indice.*masa.*corporal',
+            "tmb_harris_benedict": r'calcula.*tmb.*harris|tmb.*harris.*calcula|tasa.*metabolica.*basal.*harris|metabolismo.*basal.*harris',
+            "tmb_mifflin": r'calcula.*tmb.*mifflin|tmb.*mifflin.*calcula|tasa.*metabolica.*mifflin|metabolismo.*basal.*mifflin',
+            "tmb_owen": r'calcula.*tmb.*owen|tmb.*owen.*calcula|tasa.*metabolica.*owen|metabolismo.*basal.*owen',
+            "tmb_fao_oms": r'calcula.*tmb.*fao|tmb.*fao.*calcula|tasa.*metabolica.*oms|metabolismo.*basal.*fao|metabolismo.*basal.*oms',
+            "get": r'calcula.*get|get.*calcula|gasto.*energetico.*total|energia.*total',
+            "icc": r'calcula.*icc|icc.*calcula|indice.*cintura.*cadera|cintura.*cadera',
+            "ict": r'calcula.*ict|ict.*calcula|indice.*cintura.*altura|cintura.*altura',
+            "peso_ideal": r'calcula.*peso.*ideal|peso.*ideal.*calcula|peso.*óptimo',
+            "superficie_corporal": r'calcula.*superficie.*corporal|superficie.*corporal.*calcula|area.*corporal',
+            "agua_corporal": r'calcula.*agua.*corporal|agua.*corporal.*calcula|hidratacion.*corporal',
+            "requerimiento_proteina": r'calcula.*proteina|requerimiento.*proteina|proteina.*necesaria|necesidad.*proteina',
+            "composicion_corporal": r'calcula.*composicion.*corporal|composicion.*corporal.*calcula|analisis.*corporal|composicion.*cuerpo',
+        }
+        
+        for formula_name, pattern in calculation_patterns.items():
+            if re.search(pattern, last_user_message, re.IGNORECASE):
+                print(f"[LOG] Detectado pedido directo de {formula_name} en el último mensaje, calculando automáticamente...")
+                calculation_data = calculate_formula_from_json(formula_name, prompt)
+                if calculation_data:
+                    # Enviar datos a DeepSeek-R1 para formateo creativo en console_block
+                    enhanced_prompt = f"""{prompt}
+
+DATOS_CALCULO_MEDICO = {json.dumps(calculation_data, ensure_ascii=False)}
+
+INSTRUCCIONES: 
+
+Recibirás distintos datos de entrada y una fórmula nutricional que puede variar (IMC, TMB Mifflin, Composición Corporal, etc.). 
+Tu tarea es generar SIEMPRE un desglose de cálculo dentro de un bloque de texto estilo consola.
+
+FORMATO FIJO A RESPETAR (no cambies el orden de las secciones):
+1. Encabezado: "> Cálculo de [Nombre de la fórmula]"
+2. DATOS DE ENTRADA: listar solo los parámetros relevantes para esta fórmula (ej. peso, estatura, edad, sexo, %grasa, etc.)
+3. FÓRMULA: escribir la fórmula matemática general que se usa
+4. SUSTITUCIÓN: reemplazar las variables con los valores del caso
+5. CÁLCULO: mostrar los pasos intermedios hasta llegar al resultado
+6. RESULTADO: destacar el valor final (redondeado si corresponde)
+7. INTERPRETACIÓN: explicación breve y profesional del significado del resultado
+
+REQUISITOS DE ESTILO:
+- Todo el contenido debe estar en texto plano formateado (sin bloques de código como ```txt).
+- Usa viñetas (-) para los datos de entrada.
+- No inventes parámetros que no fueron dados.
+- Mantén un lenguaje profesional, claro y conciso.
+- ESCRIBE DE MANERA ECONÓMICA: cada palabra cuenta. Evita frases redundantes como "como podemos observar" o "es importante mencionar".
+- Para fórmulas simples (2 parámetros): limita cada sección a 1-2 líneas. Para fórmulas complejas: puedes ser más detallado.
+- Ve directo al punto, sin introducciones innecesarias.
+- Puedes usar un emoji ➡ o ✅ para resaltar el resultado final, pero no cambies el orden de las secciones."""
+
+                    # Usar get_ia_engine() para obtener la instancia
+                    ia_engine = get_ia_engine()
+                    if ia_engine is None:
+                        return JSONResponse({"error": "AI engine not available"}, status_code=503)
+                        
+                    # Determinar tokens basados en complejidad de la fórmula
+                    max_tokens = get_tokens_for_formula(calculation_data['formula'])
+                    response = ia_engine.generate(enhanced_prompt, max_new_tokens=max_tokens, temperature=0.1, top_p=0.3)
+                    thinking_content, final_message = parse_deepseek_response(response)
+                    
+                    # DeepSeek-R1 debería responder con texto formateado, convertirlo en console_block
+                    if final_message and len(final_message.strip()) > 10:  # Tiene contenido significativo
+                        # Limpiar marcadores de código que pueda agregar DeepSeek-R1
+                        import re
+                        cleaned_message = re.sub(r'```\w*\n?', '', final_message)  # Remover ```plaintext, ```console, etc.
+                        cleaned_message = re.sub(r'^\s*plaintext\s*', '', cleaned_message, flags=re.IGNORECASE)
+                        cleaned_message = re.sub(r'^\s*console\s*', '', cleaned_message, flags=re.IGNORECASE)
+                        cleaned_message = cleaned_message.strip()
+                        
+                        console_block = {
+                            "title": f"Cálculo {calculation_data['formula']}",
+                            "input": f"DATOS DE ENTRADA:\n" + "\n".join([f"{k.title()}: {v} {('kg' if k=='peso' else 'm' if k=='altura' else 'años' if k=='edad' else '')}" for k, v in calculation_data['parametros'].items()]),
+                            "output": cleaned_message
+                        }
+                        return {"message": "", "thinking": thinking_content, "console_block": console_block}
+                    else:
+                        # Fallback: devolver respuesta normal
+                        return {"message": final_message, "thinking": thinking_content, "console_block": None}
+
+        # --- CONVERSACIONES NORMALES: usar generate() con system prompt general ---
         ia_engine = get_ia_engine()
         if ia_engine is None:
             return JSONResponse({"error": "AI engine not available"}, status_code=503)
 
-        # Usar el sistema de tools para respuesta inteligente
-        response = ia_engine.generate_with_tools(prompt, max_new_tokens=150, temperature=0.3)
+        # Para conversaciones normales, usar generate() directo con system prompt general
+        response = ia_engine.generate(prompt, max_new_tokens=150, temperature=0.3)
         
         # Parsear respuesta de DeepSeek-R1 para separar thinking del mensaje final
         thinking_content, final_message = parse_deepseek_response(response)
         
+        # Respuesta normal de conversación
         return {"message": final_message, "thinking": thinking_content, "console_block": None}
 
     except Exception as e:
