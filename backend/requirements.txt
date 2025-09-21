@@ -2,10 +2,8 @@ fastapi
 uvicorn[standard]
 transformers
 torch
+accelerate
 bitsandbytes
 huggingface_hub
-ollama
-sqlite3
-unicodedata
-json
-re
+sentencepiece
+protobuf

@@ -87,7 +87,7 @@ const ModelDownloadSplash: React.FC<ModelDownloadSplashProps> = ({
   const getStatusMessage = () => {
     switch (downloadProgress.status) {
       case 'downloading':
-        return 'Descargando modelo Phi-3...';
+        return 'Descargando modelo Qwen2.5-3B...';
       case 'completed':
         return '¡Descarga completada!';
       case 'error':
@@ -145,7 +145,7 @@ const ModelDownloadSplash: React.FC<ModelDownloadSplashProps> = ({
               </h2>
               <p className="text-gray-600 dark:text-gray-400 text-sm">
                 {downloadProgress.status === 'idle' && 
-                  'Calyx AI necesita descargar el modelo Phi-3 para funcionar localmente.'}
+                  'Calyx AI necesita descargar el modelo Qwen2.5-3B para funcionar localmente.'}
                 {downloadProgress.status === 'downloading' && 
                   'Esto puede tomar unos minutos dependiendo de tu conexión.'}
                 {downloadProgress.status === 'completed' && 

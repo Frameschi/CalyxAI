@@ -1,249 +1,197 @@
-# Imports para DeepSeek-R1 via Ollama
+# Imports para Transformers + Accelerate
 import os
-import ollama
+import torch
+from transformers import (
+    AutoTokenizer,
+    AutoModelForCausalLM,
+    BitsAndBytesConfig,
+    pipeline
+)
+from accelerate import Accelerator
+import json
+import re
 
 class IAEngine:
     def __init__(self, model_name=None):
-        # Configuración de modelos disponibles - SOLO DEEPSEEK-R1
+        # Configuración de modelos disponibles - Solo QWEN2.5-3B por ahora
         self.available_models = {
-            "deepseek-r1": {
-                "name": "hf.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF:Q4_K_M",
-                "engine": "ollama", 
-                "description": "DeepSeek-R1 - Razonamiento matemático avanzado"
+            "llama3.2": {
+                "name": "Qwen/Qwen2.5-3B-Instruct",
+                "engine": "transformers",
+                "description": "Qwen2.5-3B - Rápido y eficiente",
+                "quantization": "4bit"  # 4-bit quantization para GTX 1050 Ti
             }
+            # Espacio reservado para modelo grande en el futuro
         }
         
-        # Modelo por defecto - DeepSeek-R1
-        self.current_model_key = "deepseek-r1"
+        # Modelo por defecto - Llama 3.2 (principal)
+        self.current_model_key = "llama3.2"
         current_model_config = self.available_models[self.current_model_key]
         self.model_name = model_name or current_model_config["name"]
         self.current_engine = current_model_config["engine"]
-        
-        # Engines
+
+        # Variables para Transformers
         self.model_error = None
-        self.ollama_client = None
-        
+        self.model = None
+        self.tokenizer = None
+        self.pipeline = None
+        self.accelerator = Accelerator()
+
         self._load_model()
 
     def _load_model(self):
-        """Cargar solo DeepSeek-R1 via Ollama"""
-        if self.current_engine == "ollama":
-            self._load_ollama_model()
+        """Cargar modelo IA via Transformers (Qwen2.5-3B)"""
+        if self.current_engine == "transformers":
+            self._load_transformers_model()
         else:
-            self.model_error = f"Engine no soportado: {self.current_engine}. Solo se soporta Ollama con DeepSeek-R1."
+            self.model_error = f"Engine no soportado: {self.current_engine}. Solo se soporta Transformers."
 
-    def _load_ollama_model(self):
-        print(f"[IAEngine] [LOADING] Configurando DeepSeek-R1 con optimización GPU: {self.model_name}")
+    def _load_transformers_model(self):
+        """Cargar modelo usando Transformers + Accelerate con optimización GPU"""
+        current_model_desc = self.available_models[self.current_model_key]["description"]
+        quantization = self.available_models[self.current_model_key].get("quantization", "4bit")
+
+        print(f"[IAEngine] [LOADING] Configurando {current_model_desc} con optimización GPU: {self.model_name}")
+
         try:
-            # CONFIGURACIÓN OPTIMIZADA PARA GPU - BALANCEADA
-            import os
-            os.environ['OLLAMA_NUM_GPU'] = '1'  # Usar 1 GPU
-            os.environ['OLLAMA_GPU_FRACTION'] = '0.8'  # 80% de la GPU (más estable)
-            os.environ['OLLAMA_NUM_GPU_LAYERS'] = '32'  # Capas optimizadas
-            os.environ['OLLAMA_LOW_VRAM'] = 'false'  # NO limitar VRAM
-
-            print("[IAEngine] [CONFIG] Variables GPU optimizadas configuradas:")
-            print(f"[IAEngine] [LOADING] OLLAMA_NUM_GPU_LAYERS = 32")
-            print(f"[IAEngine] [LOADING] OLLAMA_GPU_FRACTION = 0.8 (80%)")
-
-            # Intentar conectar con diferentes configuraciones de host
-            host_options = ['http://localhost:11434', None]  # None usa default
-
-            for host in host_options:
-                try:
-                    if host:
-                        self.ollama_client = ollama.Client(host=host)
-                        print(f"[IAEngine] [CONNECT] Intentando conectar a Ollama en: {host}")
-                    else:
-                        self.ollama_client = ollama.Client()
-                        print(f"[IAEngine] [CONNECT] Usando configuración por defecto de Ollama")
-
-                    # Verificar conexión listando modelos
-                    models = self.ollama_client.list()
-                    print(f"[IAEngine] [OK] Conexión exitosa. Modelos disponibles: {len(models.models)}")
-                    break
-
-                except Exception as conn_error:
-                    print(f"[IAEngine] [ERROR] Error de conexión con host {host}: {conn_error}")
-                    if host == host_options[-1]:  # Último intento
-                        self.model_error = f"Error de conexión con Ollama: {conn_error}"
-                        print(f"[IAEngine] [FALLBACK] Usando modo fallback sin modelo")
-                        return
-            
-            # Verificar si el modelo está disponible
-            try:
-                models = self.ollama_client.list()
-                model_names = [model.model for model in models.models]
-                
-                if self.model_name not in model_names:
-                    print(f"[IAEngine] Modelo {self.model_name} no encontrado. Intentando descarga...")
-                    print("[IAEngine] Esto puede tomar varios minutos...")
-                    self.ollama_client.pull(self.model_name)
-                    print(f"[IAEngine] Modelo {self.model_name} descargado exitosamente")
-                else:
-                    print(f"[IAEngine] [OK] Modelo {self.model_name} ya disponible")
-                
-                # Test del modelo con configuración optimizada
-                print("[IAEngine] [TEST] Probando configuración GPU optimizada...")
-                test_response = self.ollama_client.chat(
-                    model=self.model_name,
-                    messages=[{'role': 'user', 'content': 'Test de funcionamiento básico'}],
-                    options={
-                        'num_predict': 10,
-                        'num_gpu': 1,           # Usar GPU
-                        'num_thread': 4,        # Threads balanceados
-                        'num_ctx': 4096,        # Contexto ampliado para nutrición
-                        'temperature': 0.1,     # Baja temperatura para respuestas consistentes
-                        'low_vram': False
-                    }
+            # Configuración de cuantización 4-bit para Qwen2.5-3B
+            if quantization == "4bit":
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4"
                 )
-                print("[IAEngine] [OK] Cliente Ollama inicializado correctamente")
-                print(f"[IAEngine] 📝 Respuesta de test: {test_response['message']['content'][:100]}...")
-                
-            except Exception as e:
-                self.model_error = f"Error al verificar/descargar modelo Ollama: {str(e)}"
-                print(f"[IAEngine] {self.model_error}")
-                
+                print("[IAEngine] [CONFIG] Cuantización 4-bit activada para GPU GTX 1050 Ti")
+            else:
+                bnb_config = None
+
+            # Cargar tokenizer
+            print(f"[IAEngine] [LOADING] Cargando tokenizer: {self.model_name}")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                trust_remote_code=True
+            )
+
+            # Cargar modelo con configuración optimizada
+            print(f"[IAEngine] [LOADING] Cargando modelo con cuantización {quantization}")
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_name,
+                quantization_config=bnb_config,
+                device_map="auto",
+                trust_remote_code=True,
+                torch_dtype=torch.float16
+            )
+
+            # Crear pipeline para inference
+            print("[IAEngine] [LOADING] Creando pipeline de inference")
+            self.pipeline = pipeline(
+                "text-generation",
+                model=self.model,
+                tokenizer=self.tokenizer,
+                device_map="auto",
+                torch_dtype=torch.float16
+            )
+
+            print(f"[IAEngine] [SUCCESS] {current_model_desc} cargado exitosamente con Transformers")
+            self.model_error = None
+
         except Exception as e:
-            self.model_error = f"Error al conectar con Ollama: {str(e)}"
-            print(f"[IAEngine] {self.model_error}")
+            error_msg = f"Error cargando modelo {self.model_name}: {str(e)}"
+            print(f"[IAEngine] [ERROR] {error_msg}")
+            self.model_error = error_msg
+            self.model = None
+            self.tokenizer = None
+            self.pipeline = None
 
     def is_ready(self):
-        """Verificar si DeepSeek-R1 está listo via Ollama"""
-        if self.current_engine == "ollama":
-            return self.ollama_client is not None and self.model_error is None
-        return False
-
-    def is_model_downloaded(self):
-        """Verificar si el modelo DeepSeek-R1 está descargado en Ollama"""
-        if self.ollama_client is None:
-            return False
-        try:
-            models = self.ollama_client.list()
-            model_names = [model.model for model in models.models]
-            return self.model_name in model_names
-        except Exception:
-            return False
-
-    def get_model_cache_info(self):
-        """Obtener información sobre el modelo en Ollama"""
-        try:
-            if self.ollama_client is None:
-                return {"error": "Cliente Ollama no disponible"}
-            
-            models = self.ollama_client.list()
-            for model in models.models:
-                if model.model == self.model_name:
-                    return {
-                        "model": model.model,
-                        "size": getattr(model, 'size', 'Desconocido'),
-                        "modified_at": getattr(model, 'modified_at', 'Desconocido'),
-                        "engine": "Ollama"
-                    }
-            return {"error": f"Modelo {self.model_name} no encontrado"}
-        except Exception as e:
-            return {"error": str(e)}
+        """Verificar si el modelo está listo"""
+        return self.model is not None and self.tokenizer is not None and self.model_error is None
 
     def get_status(self):
-        cache_info = self.get_model_cache_info()
-        
+        """Obtener estado del modelo Transformers"""
         status_info = {
             "model_name": self.model_name,
-            "device": self.device,
-            "is_downloaded": cache_info["is_downloaded"],
-            "cache_size_mb": cache_info["size_mb"],
-            "cache_path": cache_info["cache_path"]
+            "engine": self.current_engine,
+            "device": "cuda" if torch.cuda.is_available() else "cpu"
         }
-        
+
         if self.model_error:
             status_info.update({
-                "status": "error", 
+                "status": "error",
                 "message": f"Modelo no disponible: {self.model_error}",
                 "ready": False
             })
         elif self.is_ready():
             status_info.update({
-                "status": "ready", 
-                "message": "Modelo cargado y listo",
+                "status": "ready",
+                "message": "Modelo cargado y listo para usar",
                 "ready": True
-            })
-        elif cache_info["is_downloaded"]:
-            status_info.update({
-                "status": "loading", 
-                "message": "Modelo descargado, cargando en memoria...",
-                "ready": False
             })
         else:
             status_info.update({
-                "status": "not_downloaded", 
-                "message": "Modelo no descargado. Se descargará en el primer uso.",
+                "status": "loading",
+                "message": "Cargando modelo...",
                 "ready": False
             })
-        
+
         return status_info
 
     def generate(self, prompt, system_prompt=None, max_new_tokens=120, temperature=0.3, top_p=0.8):
         """
-        Generación usando DeepSeek-R1 via Ollama
+        Generación usando Transformers
         """
         if not self.is_ready():
-            raise RuntimeError("DeepSeek-R1 no está disponible. Verifica que Ollama esté corriendo y el modelo esté descargado.")
-        
-        if self.current_engine == "ollama":
-            return self._generate_ollama(prompt, system_prompt, max_new_tokens, temperature, top_p)
-        else:
-            raise RuntimeError(f"Engine no soportado: {self.current_engine}. Solo se soporta Ollama con DeepSeek-R1.")
+            raise RuntimeError("Modelo no está disponible. Verifica que esté cargado correctamente.")
 
-    def _generate_ollama(self, user_prompt, system_prompt=None, max_new_tokens=300, temperature=0.3, top_p=0.8):
-        """Generación usando Ollama (DeepSeek-R1) [HOT] ULTRA AGRESIVO PARA GPU"""
+        if self.current_engine == "transformers":
+            return self._generate_transformers(prompt, system_prompt, max_new_tokens, temperature, top_p)
+        else:
+            raise RuntimeError(f"Engine no soportado: {self.current_engine}. Solo se soporta Transformers.")
+
+    def _generate_transformers(self, user_prompt, system_prompt=None, max_new_tokens=300, temperature=0.3, top_p=0.8):
+        """Generación usando Transformers + Accelerate con optimización GPU"""
         try:
-            # CONFIGURACIÓN ULTRA AGRESIVA - 99% GPU, 1% CPU
-            options = {
-                'num_predict': max(400, max_new_tokens),  # Suficiente para respuestas completas
-                'temperature': temperature,  # Usar el parámetro pasado
-                'top_p': top_p,        # Usar el parámetro pasado
-                'top_k': 30,         # Vocabulario más restringido
-                'repeat_penalty': 1.1,  # Evitar repeticiones
-                'stop': ['Usuario:', 'Pregunta:', '\n\nUsuario:', 'user:', '\nuser:'],  # Solo stop en cambios de turno
-                # [HOT][HOT][HOT] CONFIGURACIONES ULTRA AGRESIVAS PARA GPU [HOT][HOT][HOT]
-                'num_gpu': 1,           # FORZAR GPU AL 100%
-                'num_thread': 1,        # SOLO 1 THREAD CPU (MÍNIMO)
-                'numa': False,          # Sin NUMA para GPU
-                'use_mlock': True,      # Lock memoria AGRESIVO
-                'low_vram': False,      # SIN LÍMITES DE VRAM
-                'use_mmap': True,       # Memory mapping optimizado
-                'num_ctx': 4096,        # Contexto completo
-                'num_batch': 512,       # Batch grande para GPU
-                'num_gqa': 8,          # Group Query Attention optimizado
-                'num_gpu_layers': 999,  # TODAS LAS CAPAS EN GPU
-                'main_gpu': 0,         # GPU primaria
-                'tensor_split': None    # No dividir tensores
-            }
-            
-            # Construir messages con roles separados
-            messages = []
+            current_model_desc = self.available_models[self.current_model_key]["description"]
+            print(f"[IAEngine] [GENERATE] Generando con {current_model_desc}, prompt length: {len(user_prompt)}")
+
+            # Construir el prompt usando el chat template del modelo
             if system_prompt:
-                messages.append({'role': 'system', 'content': system_prompt})
-            messages.append({'role': 'user', 'content': user_prompt})
-            
-            print(f"[IAEngine] [HOT][HOT][HOT] GENERANDO CON GPU AL MÁXIMO - DeepSeek-R1 ULTRA AGRESIVO, user_prompt length: {len(user_prompt)}")
-            print(f"[IAEngine] [STARTUP] Configuración: 999 capas GPU, 1 thread CPU, sin límites VRAM")
-            
-            response = self.ollama_client.chat(
-                model=self.model_name,
-                messages=messages,
-                options=options
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+            else:
+                messages = [{"role": "user", "content": user_prompt}]
+
+            # Usar el chat template del tokenizer
+            full_prompt = self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
             )
-            
-            # Extraer el contenido completo de la respuesta
-            message_content = response.get('message', {}).get('content', '')
-            print(f"[IAEngine] [HOT][OK] RESPUESTA GPU ULTRA AGRESIVA RECIBIDA, length: {len(message_content)}")
-            
-            # NO limitar líneas para DeepSeek-R1 - permitir respuestas completas
-            return message_content.strip()
-            
+
+            # Generar respuesta usando el pipeline
+            with torch.no_grad():
+                outputs = self.pipeline(
+                    full_prompt,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    return_full_text=False  # No repetir el prompt de entrada
+                )
+
+            # Extraer la respuesta generada
+            generated_text = outputs[0]['generated_text']
+            print(f"[IAEngine] [SUCCESS] Respuesta generada, length: {len(generated_text)}")
+
+            return generated_text.strip()
+
         except Exception as e:
-            print(f"[IAEngine] [ERROR] Error en generación GPU ULTRA AGRESIVA: {e}")
+            error_msg = f"Error en generación con Transformers: {str(e)}"
+            print(f"[IAEngine] [ERROR] {error_msg}")
             return "Lo siento, el modelo de IA no está disponible en este momento."
 
     def switch_model(self, model_key):
@@ -258,17 +206,9 @@ class IAEngine:
         print(f"[IAEngine] Cambiando de '{self.current_model_key}' a '{model_key}'...")
         
         # Limpiar modelo actual de memoria
-        if self.current_engine == "ollama":
-            self.ollama_client = None
-        
-        # Configurar nuevo modelo
-        new_model_config = self.available_models[model_key]
-        self.current_model_key = model_key
-        self.model_name = new_model_config["name"]
-        self.current_engine = new_model_config["engine"]
-        
-        # Reset variables
-        self.ollama_client = None
+        self.model = None
+        self.tokenizer = None
+        self.pipeline = None
         self.model_error = None
         
         self._load_model()
@@ -476,12 +416,14 @@ REQUISITOS GENERALES:
 - Para consultas sobre alimentos: usa TOOL_CALL cuando necesites datos específicos
 - Para cálculos médicos: formatea según las instrucciones específicas cuando se proporcionen
 
-INSTRUCCIONES PARA MANEJO DE HISTORIAL:
-- Responde ÚNICAMENTE al último mensaje del usuario.
-- Ignora solicitudes antiguas y NO ejecutes acciones basadas en ellas (como recalcular IMC y otras fórmulas automáticamente).
-- Usa el historial de conversación opcionalmente para enriquecer tu respuesta de manera natural, pero sin repetir cálculos o acciones previas.
+INSTRUCCIONES CRÍTICAS PARA MANEJO DE HISTORIAL:
+- Responde ÚNICAMENTE al último mensaje del usuario. IGNORA cualquier solicitud anterior.
+- NUNCA menciones, repitas o hagas referencia a resultados de cálculos anteriores (IMC, TMB, etc.) en NINGUNA circunstancia.
+- Si el usuario dice "gracias", "ok", "de acuerdo", o mensajes similares de confirmación/agradecimiento, responde brevemente con algo como "De nada" o "¡Con gusto!" SIN mencionar cálculos previos.
+- NO ejecutes acciones basadas en mensajes antiguos. Si el último mensaje no pide un cálculo, NO calcules nada.
+- Usa el historial SOLO para entender el contexto general, NO para repetir información específica.
 
-IMPORTANTE: Si recibes instrucciones específicas para cálculos médicos, prioriza esas reglas sobre las generales."""
+IMPORTANTE: Si detectas que el último mensaje del usuario es solo una confirmación o agradecimiento, responde de manera muy breve y no menciones ningún cálculo anterior."""
 
         # Combinar system prompt base con extra (historial)
         full_system_prompt = base_system_prompt
@@ -535,33 +477,48 @@ IMPORTANTE: Si recibes instrucciones específicas para cálculos médicos, prior
         """
         import json
 
-        enhanced_prompt = f"""{user_prompt}
+        enhanced_prompt = f"""INSTRUCCIONES PARA FORMATEAR CÁLCULO MÉDICO:
 
 DATOS_CALCULO_MEDICO = {json.dumps(calculation_data, ensure_ascii=False)}
 
-INSTRUCCIONES:
+GENERA ÚNICAMENTE el desglose del cálculo médico en formato profesional y estructurado.
 
-Recibirás distintos datos de entrada y una fórmula nutricional que puede variar (IMC, TMB Mifflin, Composición Corporal, etc.).
-Tu tarea es generar SIEMPRE un desglose de cálculo dentro de un bloque de texto estilo consola.
+FORMATO GENERAL A SEGUIR:
+- Título descriptivo con el nombre del cálculo
+- Datos de entrada claramente listados
+- Fórmula matemática utilizada
+- Operación paso a paso del cálculo
+- Resultado final con unidades e interpretación
+- Cada sección claramente separada y etiquetada
 
-FORMATO FIJO A RESPETAR (no cambies el orden de las secciones):
-1. Encabezado: "> Cálculo de [Nombre de la fórmula]"
-2. DATOS DE ENTRADA: listar solo los parámetros relevantes para esta fórmula (ej. peso, estatura, edad, sexo, %grasa, etc.)
-3. FÓRMULA: escribir la fórmula matemática general que se usa
-4. SUSTITUCIÓN: reemplazar las variables con los valores del caso
-5. CÁLCULO: mostrar los pasos intermedios hasta llegar al resultado
-6. RESULTADO: destacar el valor final (redondeado si corresponde)
-7. INTERPRETACIÓN: explicación breve y profesional del significado del resultado
+EJEMPLO PARA IMC:
+> Cálculo de IMC
 
-REQUISITOS DE ESTILO:
-- Todo el contenido debe estar en texto plano formateado (sin bloques de código como ```txt).
-- Usa viñetas (-) para los datos de entrada.
-- No inventes parámetros que no fueron dados.
-- Mantén un lenguaje profesional, claro y conciso.
-- ESCRIBE DE MANERA ECONÓMICA: cada palabra cuenta. Evita frases redundantes como "como podemos observar" o "es importante mencionar".
-- Para fórmulas simples (2 parámetros): limita cada sección a 1-2 líneas. Para fórmulas complejas: puedes ser más detallado.
-- Ve directo al punto, sin introducciones innecesarias.
-- Puedes usar un emoji ➡ o ✅ para resaltar el resultado final, pero no cambies el orden de las secciones."""
+DATOS DE ENTRADA:
+Peso: 65.0 kg
+Altura: 1.75 m
+
+FÓRMULA:
+IMC = peso / altura²
+
+SUSTITUCIÓN:
+IMC = 65.0 / (1.75 × 1.75)
+
+OPERACIÓN:
+IMC = 65.0 / 3.0625
+IMC = 21.2
+
+RESULTADO:
+IMC = 21.2 (Normal)
+
+IMPORTANTE:
+- Adapta el formato según el tipo de cálculo (IMC, TMB, ICC, etc.)
+- Mantén consistencia profesional
+- Incluye todos los parámetros relevantes
+- Muestra los cálculos paso a paso
+- Finaliza con resultado e interpretación"""
+
+        return enhanced_prompt
 
         return enhanced_prompt
 
@@ -582,3 +539,34 @@ REQUISITOS DE ESTILO:
                 pass
 
         return None
+
+    def is_ready(self):
+        """Verificar si el modelo está listo"""
+        return (self.pipeline is not None and
+                self.model is not None and
+                self.tokenizer is not None and
+                self.model_error is None)
+
+    def get_status(self):
+        """Obtener estado del modelo"""
+        if self.model_error:
+            return {
+                "status": "error",
+                "message": f"Error: {self.model_error}",
+                "ready": False,
+                "model_name": self.model_name
+            }
+        elif self.is_ready():
+            return {
+                "status": "ready",
+                "message": "Modelo cargado y listo",
+                "ready": True,
+                "model_name": self.model_name
+            }
+        else:
+            return {
+                "status": "loading",
+                "message": "Cargando modelo...",
+                "ready": False,
+                "model_name": self.model_name
+            }

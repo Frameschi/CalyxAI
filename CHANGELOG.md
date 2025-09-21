@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.7.1] - 2025-09-20
+### 🚀 CARACTERÍSTICA MAYOR: Migración Completa a Qwen2.5-3B con Transformers
+- **Migración total de Ollama**: Eliminación completa de DeepSeek-R1 y sistema Ollama
+- **Qwen2.5-3B exclusivo**: Implementación de Qwen/Qwen2.5-3B-Instruct con cuantización 4-bit
+- **Transformers + Accelerate**: Sistema de inferencia optimizado con GPU para GTX 1050 Ti
+- **Eliminación de dependencias**: Removidos todos los paquetes y configuraciones de Ollama
+- **Limpieza completa**: Eliminadas todas las referencias a modelos antiguos (DeepSeek-R1, Phi-3, etc.)
+
+### 🧮 MEJORA CRÍTICA: Formateo de Cálculos Médicos
+- **Formato estructurado IMC**: Implementación de formato profesional con secciones claras (DATOS DE ENTRADA, FÓRMULA, SUSTITUCIÓN, OPERACIÓN, RESULTADO)
+- **Prompt universal inteligente**: Sistema de formateo que funciona para todas las fórmulas médicas manteniendo consistencia
+- **Eliminación de duplicaciones**: Corrección de secciones duplicadas en la presentación de cálculos
+- **Títulos correctos**: Ajuste de nomenclatura ("Cálculo de IMC" en lugar de "Cálculo del IMC")
+
+### 🗣️ OPTIMIZACIÓN: Sistema de Conversación Mejorado
+- **Respuestas contextuales**: Corrección de IA que mencionaba cálculos anteriores en respuestas de agradecimiento
+- **Historial inteligente**: Sistema que ignora solicitudes antiguas y responde únicamente al último mensaje
+- **Separación de contextos**: Diferenciación clara entre conversaciones normales y peticiones de cálculo
+- **Experiencia natural**: Respuestas breves y apropiadas para interacciones sociales
+
+### 🔧 Mejoras técnicas y estabilidad
+- **Extracción de parámetros**: Corrección para usar solo el último mensaje del usuario en cálculos
+- **Gestión de memoria GPU**: Optimización de 4GB VRAM para Qwen2.5-3B
+- **Sistema de tokens dinámico**: Asignación inteligente de tokens según complejidad
+- **Code cleanup**: Eliminación de código legacy y referencias obsoletas
+
 ## [1.7.0] - 2025-09-19
 ### 🧠 CARACTERÍSTICA MAYOR: Sistema de Prompts Optimizado y Separado
 - **Separación clara de contextos**: Sistema de prompts completamente separado entre conversaciones normales y cálculos médicos

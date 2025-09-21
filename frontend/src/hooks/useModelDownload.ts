@@ -98,7 +98,7 @@ export const useModelDownload = (): UseModelDownloadReturn => {
 
       // Simular descarga progresiva para el demo
       // En una implementación real, esto sería una llamada al backend
-      const totalSize = 2400000000; // 2.4 GB aproximado para Phi-3-mini
+      const totalSize = 2400000000; // 2.4 GB aproximado para Qwen2.5-3B
       
       setDownloadProgress(prev => ({
         ...prev,

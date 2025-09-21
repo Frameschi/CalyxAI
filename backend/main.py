@@ -43,17 +43,17 @@ def get_fallback_message():
     """Obtiene mensaje de fallback según el modelo activo"""
     try:
         ia_engine = get_ia_engine()
-        if hasattr(ia_engine, 'current_model_key') and ia_engine.current_model_key == 'deepseek-r1':
-            return "🧬 DeepSeek Nutrición Avanzada activado. Capacidad de análisis profundo y razonamiento nutricional disponible. ¿Qué consulta nutricional puedo analizar para ti?"
+        if hasattr(ia_engine, 'current_model_key') and ia_engine.current_model_key == 'llama3.2':
+            return "� Qwen2.5-3B activado. Asistente nutricional inteligente disponible. ¿En qué puedo ayudarte hoy?"
         else:
             return "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
     except:
         return "¡Hola! Soy CalyxAI, tu asistente nutricional. ¿En qué puedo ayudarte hoy?"
 
-def parse_deepseek_response(response):
+def parse_ai_response(response):
     """
-    Parsea respuesta de DeepSeek-R1 para separar thinking del mensaje final.
-    Maneja diferentes formatos de thinking que puede usar DeepSeek-R1.
+    Parsea respuesta de IA para separar thinking del mensaje final.
+    Maneja Qwen2.5-3B y otros modelos con diferentes formatos de respuesta.
     También maneja respuestas que empiezan con "json { " como JSON directo.
     """
     import re
@@ -215,7 +215,7 @@ def calculate_formula_from_json(formula_name, message):
                     interpretation = rango["texto"]
                     break
             
-            # Devolver datos estructurados para que DeepSeek-R1 los formatee creativamente
+            # Devolver datos estructurados para que Qwen2.5-3B los formatee creativamente
             return {
                 "tipo": "calculo_medico",
                 "formula": formula_name.upper(),
@@ -434,9 +434,9 @@ async def chat(request: Request):
         for formula_name, pattern in calculation_patterns.items():
             if re.search(pattern, last_user_message, re.IGNORECASE):
                 print(f"[LOG] Detectado pedido directo de {formula_name} en el último mensaje, calculando automáticamente...")
-                calculation_data = calculate_formula_from_json(formula_name, prompt)
+                calculation_data = calculate_formula_from_json(formula_name, last_user_message)
                 if calculation_data:
-                    # Enviar datos a DeepSeek-R1 para formateo creativo en console_block
+                    # Enviar datos a Qwen2.5-3B para formateo creativo en console_block
                     # Usar get_ia_engine() para obtener la instancia
                     ia_engine = get_ia_engine()
                     if ia_engine is None:
@@ -448,11 +448,11 @@ async def chat(request: Request):
                     # Determinar tokens basados en complejidad de la fórmula
                     max_tokens = get_tokens_for_formula(calculation_data['formula'])
                     response = ia_engine.generate(enhanced_prompt, max_new_tokens=max_tokens, temperature=0.1, top_p=0.3)
-                    thinking_content, final_message = parse_deepseek_response(response)
+                    thinking_content, final_message = parse_ai_response(response)
                     
-                    # DeepSeek-R1 debería responder con texto formateado, convertirlo en console_block
+                    # Qwen2.5-3B debería responder con texto formateado, convertirlo en console_block
                     if final_message and len(final_message.strip()) > 10:  # Tiene contenido significativo
-                        # Limpiar marcadores de código que pueda agregar DeepSeek-R1
+                        # Limpiar marcadores de código que pueda agregar Qwen2.5-3B
                         import re
                         cleaned_message = re.sub(r'```\w*\n?', '', final_message)  # Remover ```plaintext, ```console, etc.
                         cleaned_message = re.sub(r'^\s*plaintext\s*', '', cleaned_message, flags=re.IGNORECASE)
@@ -489,10 +489,10 @@ async def chat(request: Request):
         system_prompt_extra = f"HISTORIAL DE CONVERSACIÓN PARA CONTEXTO:\n{history_without_last}\n\n" if history_without_last.strip() else ""
 
         # Para conversaciones normales, usar generate_with_tools() con system prompt separado
-        response = ia_engine.generate_with_tools(last_user_message, system_prompt_extra=system_prompt_extra, max_new_tokens=150, temperature=0.3, top_p=0.8, max_iterations=1)
+        response = ia_engine.generate_with_tools(last_user_message, system_prompt_extra=system_prompt_extra, max_new_tokens=512, temperature=0.3, top_p=0.8, max_iterations=1)
         
-        # Parsear respuesta de DeepSeek-R1 para separar thinking del mensaje final
-        thinking_content, final_message = parse_deepseek_response(response)
+        # Parsear respuesta de Qwen2.5-3B para separar thinking del mensaje final
+        thinking_content, final_message = parse_ai_response(response)
         
         # Respuesta normal de conversación
         return {"message": final_message, "thinking": thinking_content, "console_block": None}
@@ -659,6 +659,41 @@ def get_model_status():
             "message": str(e),
             "ready": False
         }
+
+@app.post("/model/switch")
+def switch_model(request: dict):
+    """Cambiar el modelo IA activo"""
+    try:
+        model_key = request.get("model_key")
+        if not model_key:
+            return {"error": "Se requiere 'model_key' en el body"}
+        
+        ia_engine = get_ia_engine()
+        success = ia_engine.switch_model(model_key)
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"Modelo cambiado a {model_key}",
+                "current_model": ia_engine.get_current_model()
+            }
+        else:
+            return {"error": "No se pudo cambiar el modelo"}
+            
+    except Exception as e:
+        return {"error": f"Error al cambiar modelo: {str(e)}"}
+
+@app.get("/model/available")
+def get_available_models():
+    """Obtener lista de modelos disponibles"""
+    try:
+        ia_engine = get_ia_engine()
+        return {
+            "models": ia_engine.available_models,
+            "current": ia_engine.current_model_key
+        }
+    except Exception as e:
+        return {"error": f"Error al obtener modelos disponibles: {str(e)}"}
 
 if __name__ == "__main__":
     import uvicorn

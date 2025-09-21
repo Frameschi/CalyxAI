@@ -23,16 +23,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
 
     const modelName = modelStatus.model_name || 'Modelo desconocido';
     
-    if (modelName.includes('phi-3') || modelName.includes('Phi-3')) {
+    if (modelName.includes('qwen') || modelName.includes('Qwen')) {
       return {
-        name: 'Phi-3-mini-4k-instruct',
-        description: 'Calyx AI utiliza el modelo Phi-3-mini-4k-instruct de Microsoft, que se ejecuta completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.',
-        isLocal: true
-      };
-    } else if (modelName.includes('deepseek') || modelName.includes('DeepSeek')) {
-      return {
-        name: 'DeepSeek-R1-0528-Qwen3-8B-GGUF',
-        description: 'Calyx AI utiliza el modelo DeepSeek-R1 cuantizado en formato GGUF, que se ejecuta completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.',
+        name: 'Qwen2.5-3B-Instruct',
+        description: 'Calyx AI utiliza el modelo Qwen2.5-3B-Instruct con cuantización 4-bit, que se ejecuta completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.',
         isLocal: true
       };
     } else {

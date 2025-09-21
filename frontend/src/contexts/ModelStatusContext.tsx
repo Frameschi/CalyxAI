@@ -61,7 +61,7 @@ export const ModelStatusProvider: React.FC<ModelStatusProviderProps> = ({ childr
           status: 'error',
           message: 'No se puede conectar con el backend. Asegúrate de que el servidor esté ejecutándose en el puerto 8000.',
           model_ready: false,
-          model_name: 'microsoft/phi-3-mini-4k-instruct'
+          model_name: 'Qwen/Qwen2.5-3B-Instruct'
         });
         return;
       }
@@ -103,7 +103,7 @@ export const ModelStatusProvider: React.FC<ModelStatusProviderProps> = ({ childr
           ? 'No se puede conectar con el backend. Asegúrate de que el servidor esté ejecutándose en el puerto 8000.'
           : `Error al verificar el estado del modelo: ${errorMessage}`,
         model_ready: false,
-        model_name: 'microsoft/phi-3-mini-4k-instruct'
+        model_name: 'Qwen/Qwen2.5-3B-Instruct'
       });
     } finally {
       setIsLoading(false);

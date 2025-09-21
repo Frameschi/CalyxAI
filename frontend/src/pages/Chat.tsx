@@ -360,7 +360,7 @@ export default function Chat() {
         const timeoutId = window.setTimeout(() => {
           console.log('[DEBUG Frontend] Timeout alcanzado, abortando petición');
           controller.abort();
-        }, 600000); // 10 minutos para DeepSeek-R1
+        }, 600000); // 10 minutos para Qwen2.5-3B
         
         console.log(`[DEBUG Frontend] Iniciando fetch a ${API_URL}/chat con timeout de 10 minutos`);
         console.log(`[DEBUG Frontend] Prompt length: ${promptFinal.length} caracteres`);
@@ -605,7 +605,7 @@ export default function Chat() {
             {loading && (
               <div className="max-w-4xl">
                 <div className="text-gray-500 dark:text-gray-400 italic">
-                  {selectedModel === 'deepseek-r1' ? "Analizando con razonamiento avanzado..." : "Procesando respuesta..."}
+                  {selectedModel === 'qwen2.5-3b' ? "Analizando con IA avanzada..." : "Procesando respuesta..."}
                 </div>
               </div>
             )}
@@ -630,7 +630,7 @@ export default function Chat() {
             className={`flex-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none border-none text-base py-2 transition-colors ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             placeholder={
               modelSwitching ? "⟳ Cambiando modelo..." :
-              loading ? (selectedModel === 'deepseek-r1' ? "🧬 Analizando con razonamiento avanzado..." : "Procesando respuesta...") : 
+              loading ? (selectedModel === 'qwen2.5-3b' ? "� Analizando con IA avanzada..." : "Procesando respuesta...") : 
               activeAnimations > 0 ? "Desglosando cálculos..." : 
               "Escribe tu mensaje..."
             }

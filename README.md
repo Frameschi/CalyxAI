@@ -1,15 +1,15 @@
 
 # Calyx AI
 
-Calyx AI es una aplicación de nutrición inteligente que funciona completamente de forma local, combinando una interfaz moderna (Electron + React) con un backend robusto (FastAPI + **sistema dual de modelos IA** optimizado para GPU). Permite consultas de alimentos, cálculos nutricionales automáticos y chat asistente general con **capacidades de razonamiento avanzado**, sin depender de la nube.
+Calyx AI es una aplicación de nutrición inteligente que funciona completamente de forma local, combinando una interfaz moderna (Electron + React) con un backend robusto (FastAPI + **Qwen2.5-3B optimizado para GPU**). Permite consultas de alimentos, cálculos nutricionales automáticos y chat asistente general con **capacidades de razonamiento avanzado**, sin depender de la nube.
 
 ## Objetivo
 Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, privada y sin conexión, ideal para profesionales, estudiantes y usuarios preocupados por su alimentación, con **análisis profundo** y **transparencia en el proceso de pensamiento**.
 
 ## Características principales
-- **Dual AI System**: Phi-3-Mini (rápido) + **DeepSeek-R1** (razonamiento profundo)
+- **Qwen2.5-3B Exclusivo**: Modelo de lenguaje avanzado con cuantización 4-bit optimizada para GPU
 - **🧠 Thinking Transparency**: Dropdown estilo ChatGPT mostrando el proceso de razonamiento completo
-- **⚡ GPU Optimizado**: 42%/58% CPU/GPU balance para máximo rendimiento
+- **⚡ GPU Optimizado**: 42%/58% CPU/GPU balance para máximo rendimiento en GTX 1050 Ti
 - **Cálculos automáticos de fórmulas nutricionales** (IMC, Composición Corporal, TMB, etc.)
 - **Separación inteligente de fórmulas médicas** - No interfieren entre sí
 - **Recolección progresiva de parámetros** - Conversaciones naturales para obtener datos
@@ -31,14 +31,14 @@ Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, p
 - **Contexto inteligente** - 20 mensajes para fórmulas médicas, 6 para chat general
 - **Animación terminal profesional** con cursor único y efecto typewriter
 - **Conversión de unidades robusta** para altura (cm/m) y peso (kg/g)
-- Carga y uso de modelo Phi-3 Mini en GPU y 4-bit (bitsandbytes)
+- Carga y uso de modelo Qwen2.5-3B en GPU con cuantización 4-bit (Transformers + Accelerate)
 - Frontend con chat moderno, manejo de errores y timeouts
 - Búsqueda de alimentos robusta, insensible a acentos y mayúsculas
 - App de escritorio y web funcional (Electron y navegador)
 - Pruebas exitosas de comunicación y generación de respuestas
 
 ---
-Desarrollado por Frameschi. Versión 1.7.0
+Desarrollado por Frameschi. Versión 1.7.1
 
 ## Notas de versión
 Consulta los cambios recientes en [CHANGELOG.md](./CHANGELOG.md)

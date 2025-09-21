@@ -1,15 +1,14 @@
 # Calyx AI - AI Coding Agent Instructions
 
 ## Project Overview
-Calyx AI is a **nutrition intelligence application** combining a modern Electron + React frontend with a robust FastAPI backend featuring a **dual AI system** (Phi-3-Mini for speed + DeepSeek-R1 for advanced reasoning). The app provides local nutrition consultations, automatic medical calculations, and chat assistance without external dependencies.
+Calyx AI is a **nutrition intelligence application** combining a modern Electron + React frontend with a robust FastAPI backend featuring **Qwen2.5-3B with GPU optimization**. The app provides local nutrition consultations, automatic medical calculations, and chat assistance without external dependencies.
 
 ## Architecture Overview
 
-### Dual AI System
-- **Phi-3-Mini**: Fast, efficient model loaded via HuggingFace Transformers with 4-bit quantization on GPU
-- **DeepSeek-R1**: Advanced reasoning model via Ollama, optimized for mathematical and medical calculations
+### AI System
+- **Qwen2.5-3B**: Advanced language model loaded via HuggingFace Transformers with 4-bit quantization on GPU, optimized for medical and nutritional calculations
 - **Dynamic Switching**: Automatic model selection based on query complexity (nutrition chat vs. medical formulas)
-- **GPU Optimization**: 42%/58% CPU/GPU balance with specific environment variables (`OLLAMA_NUM_GPU_LAYERS=32`, `OLLAMA_GPU_FRACTION=0.8`)
+- **GPU Optimization**: 42%/58% CPU/GPU balance with 4-bit quantization for efficient VRAM usage
 
 ### Backend (FastAPI + Python)
 - **Core Engine**: `ai_engine.py` manages model loading and inference
@@ -20,7 +19,7 @@ Calyx AI is a **nutrition intelligence application** combining a modern Electron
 ### Frontend (Electron + React + TypeScript)
 - **UI Framework**: React with TypeScript, Tailwind CSS, Framer Motion animations
 - **Desktop App**: Electron with auto-starting backend in production builds
-- **Key Components**: Thinking dropdown for DeepSeek-R1, animated console blocks, model status management
+- **Key Components**: Animated console blocks, model status management, and calculation displays
 - **State Management**: Context-based model status polling, animation state tracking
 
 ## Critical Developer Workflows
@@ -108,8 +107,7 @@ campos_por_categoria = {
 ## Integration Points & Dependencies
 
 ### External Services
-- **Ollama**: Local DeepSeek-R1 inference (port detection automatic)
-- **HuggingFace**: Phi-3-Mini model downloads and tokenization
+- **HuggingFace**: Qwen2.5-3B model downloads and tokenization via Transformers
 - **SQLite**: Local databases for food data and user data
 
 ### Cross-Component Communication
@@ -133,7 +131,7 @@ campos_por_categoria = {
 ### Frontend Core
 - `frontend/src/pages/Chat.tsx`: Main chat interface with model switching
 - `frontend/src/components/ConsoleRenderer.tsx`: Animated calculation displays
-- `frontend/src/components/ThinkingDropdown.tsx`: DeepSeek-R1 reasoning transparency
+- `frontend/src/components/ThinkingDropdown.tsx`: Qwen2.5-3B reasoning transparency
 - `frontend/electron/main.cjs`: Desktop app lifecycle and backend spawning
 
 ### Configuration
@@ -155,15 +153,15 @@ campos_por_categoria = {
 
 ### Testing Approach
 - **Integration Focus**: End-to-end testing of AI responses and calculations
-- **Model Validation**: Verify both Phi-3 and DeepSeek-R1 outputs
+- **Model Validation**: Verify Qwen2.5-3B outputs and calculation accuracy
 - **UI Animation Testing**: Console block rendering and thinking dropdown behavior
 
 ## Common Pitfalls to Avoid
 
 ### Model Loading Issues
 - Always check GPU availability before quantization
-- Handle Ollama connection failures gracefully
-- Provide clear error messages for model switching
+- Handle Transformers loading failures gracefully
+- Provide clear error messages for model initialization
 
 ### Formula Context Management
 - Maintain conversation history for multi-step calculations
@@ -179,8 +177,8 @@ campos_por_categoria = {
 
 When working on Calyx AI:
 
-1. **Preserve Dual Architecture**: Changes should maintain both Phi-3 and DeepSeek-R1 pathways
-2. **Test Both Models**: Validate features work with fast and reasoning models
+1. **Optimize Qwen2.5-3B**: Focus on efficient GPU utilization and model performance
+2. **Test Model Features**: Validate features work with Qwen2.5-3B for nutrition and medical calculations
 3. **Maintain UI Polish**: Console animations and thinking transparency are core UX features
 4. **Handle Internationalization**: Spanish UI with accent-insensitive search patterns
 5. **Optimize Performance**: GPU utilization and memory management are critical
