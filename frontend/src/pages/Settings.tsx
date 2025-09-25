@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useModelStatus } from '../contexts/ModelStatusContext';
@@ -10,6 +10,7 @@ interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
   const { isDarkMode, toggleTheme } = useTheme();
   const { modelStatus } = useModelStatus();
+  const [appVersion, setAppVersion] = useState<string>('Cargando...');
 
   // Función para obtener información del modelo actual
   const getModelInfo = () => {
@@ -23,22 +24,44 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
 
     const modelName = modelStatus.model_name || 'Modelo desconocido';
     
-    if (modelName.includes('qwen') || modelName.includes('Qwen')) {
+    // Siempre mostrar Qwen2.5-3B ya que es el único modelo soportado
+    if (modelName.includes('qwen') || modelName.includes('Qwen') || modelName.includes('Qwen2.5')) {
       return {
         name: 'Qwen2.5-3B-Instruct',
         description: 'Calyx AI utiliza el modelo Qwen2.5-3B-Instruct con cuantización 4-bit, que se ejecuta completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.',
         isLocal: true
       };
     } else {
+      // Fallback por si acaso, pero debería ser Qwen2.5-3B
       return {
-        name: modelName,
-        description: 'Este modelo se ejecuta completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.',
+        name: 'Qwen2.5-3B-Instruct',
+        description: 'Calyx AI utiliza el modelo Qwen2.5-3B-Instruct con cuantización 4-bit, que se ejecuta completamente en tu dispositivo para garantizar la privacidad de tus datos médicos.',
         isLocal: true
       };
     }
   };
 
   const modelInfo = getModelInfo();
+
+  // Cargar versión desde el backend
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/version');
+        if (response.ok) {
+          const data = await response.json();
+          setAppVersion(data.version);
+        } else {
+          setAppVersion('1.7.2'); // Fallback
+        }
+      } catch (error) {
+        console.error('Error fetching version:', error);
+        setAppVersion('1.7.2'); // Fallback
+      }
+    };
+
+    fetchVersion();
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-white dark:bg-gray-900 transition-colors">
@@ -136,7 +159,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Versión</span>
-                <span className="text-gray-900 dark:text-white font-medium">1.7.0</span>
+                <span className="text-gray-900 dark:text-white font-medium">{appVersion}</span>
               </div>
               
               <div className="flex justify-between">
@@ -148,7 +171,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
               
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Desarrollado por</span>
-                <span className="text-gray-900 dark:text-white font-medium">CalyxAI Team</span>
+                <span className="text-gray-900 dark:text-white font-medium">ARCROSS</span>
               </div>
             </div>
           </div>

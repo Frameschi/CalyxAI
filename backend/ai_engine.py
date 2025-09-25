@@ -243,6 +243,98 @@ class IAEngine:
                     "required": ["nombre"]
                 }
             },
+            "buscar_alimentos_filtrados": {
+                "description": "Buscar alimentos aplicando filtros nutricionales avanzados",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "criterios": {
+                            "type": "object",
+                            "description": "Criterios de filtro nutricional",
+                            "properties": {
+                                "sodio_max": {
+                                    "type": "number",
+                                    "description": "Máximo de sodio en mg (ej: 100 para alimentos bajos en sodio)"
+                                },
+                                "fibra_min": {
+                                    "type": "number",
+                                    "description": "Mínimo de fibra en g (ej: 5 para alimentos ricos en fibra)"
+                                },
+                                "calorias_max": {
+                                    "type": "number",
+                                    "description": "Máximo de calorías (ej: 200 para alimentos light)"
+                                },
+                                "proteina_min": {
+                                    "type": "number",
+                                    "description": "Mínimo de proteína en g (ej: 10 para alimentos proteicos)"
+                                },
+                                "lipidos_max": {
+                                    "type": "number",
+                                    "description": "Máximo de lípidos/grasas en g (ej: 5 para alimentos bajos en grasa)"
+                                },
+                                "grupo": {
+                                    "type": "string",
+                                    "description": "Grupo de alimentos específico (ej: 'verduras', 'frutas', 'cereales')"
+                                },
+                                "nombre_like": {
+                                    "type": "string",
+                                    "description": "Búsqueda por nombre parcial (ej: 'arroz' para encontrar variedades de arroz)"
+                                }
+                            }
+                        },
+                        "limite": {
+                            "type": "number",
+                            "description": "Máximo número de resultados (por defecto 10)",
+                            "default": 10
+                        }
+                    },
+                    "required": ["criterios"]
+                }
+            },
+            "calcular_composicion_total": {
+                "description": "Calcular la composición nutricional total de una combinación de alimentos",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "alimentos": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Lista de nombres de alimentos (ej: ['manzana', 'arroz integral'])"
+                        },
+                        "porciones": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "description": "Factores de porción para cada alimento (ej: [1.0, 2.0] para 1x manzana y 2x porción de arroz). Si no se especifica, usa 1.0 para todos"
+                        }
+                    },
+                    "required": ["alimentos"]
+                }
+            },
+            "generar_recomendaciones_dieta": {
+                "description": "Generar recomendaciones de dieta basadas en restricciones y objetivos",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "restricciones": {
+                            "type": "object",
+                            "description": "Restricciones dietéticas",
+                            "properties": {
+                                "vegetariano": {"type": "boolean", "description": "Dieta vegetariana"},
+                                "vegano": {"type": "boolean", "description": "Dieta vegana"},
+                                "bajo_sodio": {"type": "boolean", "description": "Bajo en sodio"},
+                                "alto_fibra": {"type": "boolean", "description": "Rico en fibra"},
+                                "diabetico": {"type": "boolean", "description": "Apto para diabéticos"}
+                            }
+                        },
+                        "objetivo_calorico": {
+                            "type": "number",
+                            "description": "Calorías objetivo diario (por defecto 2000)",
+                            "default": 2000
+                        }
+                    },
+                    "required": ["restricciones"]
+                }
+            },
             "obtener_formula": {
                 "description": "Obtener la fórmula específica para un cálculo médico/nutricional",
                 "parameters": {
@@ -271,6 +363,12 @@ class IAEngine:
         try:
             if tool_name == "consultar_alimento":
                 return self._tool_consultar_alimento(parameters.get("nombre", ""))
+            elif tool_name == "buscar_alimentos_filtrados":
+                return self._tool_buscar_alimentos_filtrados(parameters.get("criterios", {}), parameters.get("limite", 10))
+            elif tool_name == "calcular_composicion_total":
+                return self._tool_calcular_composicion_total(parameters.get("alimentos", []), parameters.get("porciones"))
+            elif tool_name == "generar_recomendaciones_dieta":
+                return self._tool_generar_recomendaciones_dieta(parameters.get("restricciones", {}), parameters.get("objetivo_calorico", 2000))
             elif tool_name == "obtener_formula":
                 return self._tool_obtener_formula(parameters.get("tipo", ""))
             elif tool_name == "listar_formulas_disponibles":
@@ -395,6 +493,44 @@ class IAEngine:
         except Exception as e:
             return {"error": f"Error listando fórmulas: {str(e)}"}
 
+    def _tool_buscar_alimentos_filtrados(self, criterios, limite=10):
+        """Tool para buscar alimentos con filtros avanzados"""
+        try:
+            from calculos.nutricion import buscar_alimentos_filtrados
+            resultados = buscar_alimentos_filtrados(criterios, limite)
+
+            return {
+                "encontrados": len(resultados),
+                "limite": limite,
+                "criterios_aplicados": criterios,
+                "alimentos": resultados
+            }
+
+        except Exception as e:
+            return {"error": f"Error en búsqueda filtrada: {str(e)}"}
+
+    def _tool_calcular_composicion_total(self, alimentos, porciones=None):
+        """Tool para calcular composición nutricional total de alimentos"""
+        try:
+            from calculos.nutricion import calcular_composicion_total
+            resultado = calcular_composicion_total(alimentos, porciones)
+
+            return resultado
+
+        except Exception as e:
+            return {"error": f"Error calculando composición: {str(e)}"}
+
+    def _tool_generar_recomendaciones_dieta(self, restricciones, objetivo_calorico=2000):
+        """Tool para generar recomendaciones de dieta"""
+        try:
+            from calculos.nutricion import generar_recomendaciones_dieta
+            recomendaciones = generar_recomendaciones_dieta(restricciones, objetivo_calorico)
+
+            return recomendaciones
+
+        except Exception as e:
+            return {"error": f"Error generando recomendaciones: {str(e)}"}
+
     def generate_with_tools(self, user_prompt, system_prompt_extra="", max_new_tokens=150, temperature=0.3, top_p=0.8, max_iterations=3):
         """
         Generar respuesta usando sistema de tools.
@@ -413,7 +549,6 @@ REQUISITOS GENERALES:
 - Mantén un tono profesional, pero cercano y humano
 - Ajusta tu respuesta al contexto de la conversación
 - No inventes información nutricional que no conozcas
-- Para consultas sobre alimentos: usa TOOL_CALL cuando necesites datos específicos
 - Para cálculos médicos: formatea según las instrucciones específicas cuando se proporcionen
 
 INSTRUCCIONES CRÍTICAS PARA MANEJO DE HISTORIAL:
@@ -473,52 +608,75 @@ IMPORTANTE: Si detectas que el último mensaje del usuario es solo una confirmac
     def build_calculation_prompt(self, user_prompt, calculation_data):
         """
         Construir prompt optimizado para cálculos médicos.
-        Centraliza toda la lógica de formateo de cálculos en ai_engine.py
+        El modelo debe generar TODO el contenido del console_block (título, datos, fórmula, resultado)
         """
         import json
 
-        enhanced_prompt = f"""INSTRUCCIONES PARA FORMATEAR CÁLCULO MÉDICO:
+        enhanced_prompt = f"""DATOS_CALCULO_MEDICO = {json.dumps(calculation_data, ensure_ascii=False)}
 
-DATOS_CALCULO_MEDICO = {json.dumps(calculation_data, ensure_ascii=False)}
+### INSTRUCCIONES PARA EL MODELO (NO COPIAR ESTAS INSTRUCCIONES) ###
+- Usa ÚNICAMENTE los datos de DATOS_CALCULO_MEDICO para generar el cálculo
+- NO copies valores de ejemplo - usa los parámetros reales del JSON
+- Genera ÚNICAMENTE el cálculo médico formateado que aparece después de 'FORMATO A GENERAR'
+- NO incluyas estas instrucciones en tu respuesta
+- NO incluyas ningún texto adicional fuera del formato
+- Incluye TODOS los parámetros relevantes del cálculo
+- Muestra fórmula matemática, sustitución y operaciones paso a paso
+- Finaliza con resultado e interpretación
+- Adapta el título según el tipo de cálculo (IMC, TMB, ICC, etc.)
 
-GENERA ÚNICAMENTE el desglose del cálculo médico en formato profesional y estructurado.
-
-FORMATO GENERAL A SEGUIR:
-- Título descriptivo con el nombre del cálculo
-- Datos de entrada claramente listados
-- Fórmula matemática utilizada
-- Operación paso a paso del cálculo
-- Resultado final con unidades e interpretación
-- Cada sección claramente separada y etiquetada
-
-EJEMPLO PARA IMC:
+### FORMATO A GENERAR (USA LOS DATOS REALES, NO COPIES ESTE EJEMPLO) ###
 > Cálculo de IMC
 
 DATOS DE ENTRADA:
-Peso: 65.0 kg
-Altura: 1.75 m
+Peso: [peso] kg
+Altura: [altura] m
 
 FÓRMULA:
 IMC = peso / altura²
 
 SUSTITUCIÓN:
-IMC = 65.0 / (1.75 × 1.75)
+IMC = [peso] / ([altura] × [altura])
 
 OPERACIÓN:
-IMC = 65.0 / 3.0625
-IMC = 21.2
+IMC = [peso] / [altura_cuadrado]
+IMC = [resultado]
 
 RESULTADO:
-IMC = 21.2 (Normal)
-
-IMPORTANTE:
-- Adapta el formato según el tipo de cálculo (IMC, TMB, ICC, etc.)
-- Mantén consistencia profesional
-- Incluye todos los parámetros relevantes
-- Muestra los cálculos paso a paso
-- Finaliza con resultado e interpretación"""
+IMC = [resultado] ([interpretacion])"""
 
         return enhanced_prompt
+
+    def build_nutrition_prompt(self, user_prompt, nutrition_query):
+        """
+        Construir prompt optimizado para consultas nutricionales/alimentarias.
+        Incluye tools disponibles para acceder a la base de datos SMAE.
+        """
+        import json
+
+        enhanced_prompt = f"""CONSULTA_NUTRICIONAL = "{nutrition_query}"
+
+### INSTRUCCIONES PARA CONSULTAS NUTRICIONALES ###
+
+Para consultas sobre alimentos, SIEMPRE debes usar las herramientas disponibles para obtener datos reales de la base de datos SMAE. NO inventes información nutricional.
+
+HERRAMIENTAS DISPONIBLES (usa TOOL_CALL para acceder a datos reales):
+- consultar_alimento: Para información nutricional específica de un alimento (ej: "manzana", "arroz integral")
+- buscar_alimentos_filtrados: Para búsquedas avanzadas (ej: alimentos bajos en sodio, ricos en fibra)
+- calcular_composicion_total: Para composición nutricional de múltiples alimentos
+- generar_recomendaciones_dieta: Para recomendaciones dietéticas personalizadas
+
+FORMATO PARA LLAMAR HERRAMIENTAS:
+TOOL_CALL: {{"tool": "consultar_alimento", "parameters": {{"nombre": "manzana"}}}}
+
+INSTRUCCIONES ESPECÍFICAS:
+- Usa consultar_alimento para alimentos específicos
+- Usa buscar_alimentos_filtrados para consultas como "alimentos bajos en sodio" o "ricos en fibra"
+- Responde de manera conversacional pero con datos precisos
+- Incluye la fuente (SMAE) cuando proporciones datos específicos
+- Si el usuario pide "información completa" o "detallada", proporciona datos completos pero en formato legible
+
+CONSULTA DEL USUARIO: {user_prompt}"""
 
         return enhanced_prompt
 

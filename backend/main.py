@@ -7,7 +7,6 @@ import json
 from threading import Lock
 from ai_engine import IAEngine
 # Importar módulos de utilidades y cálculos
-from utils.validators import validate_food_input
 from calculos.nutricion import calcular_info_nutricional_basica, calcular_info_nutricional_completa
 
 app = FastAPI()
@@ -24,6 +23,16 @@ app.add_middleware(
 # Instancia global del motor de IA - INICIALIZACIÓN DIFERIDA
 ia_engine = None
 ia_engine_lock = Lock()  # 🔒 Lock para sincronización de inicialización
+
+def get_version():
+    """Lee la versión desde el archivo VERSION.txt"""
+    try:
+        version_file = os.path.join(os.path.dirname(__file__), '..', 'VERSION.txt')
+        with open(version_file, 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    except Exception as e:
+        print(f"Error leyendo VERSION.txt: {e}")
+        return "1.7.1"  # Fallback
 
 def get_ia_engine():
     """Obtiene la instancia global de IAEngine con inicialización sincronizada"""
@@ -387,6 +396,12 @@ async def ping():
     """Endpoint simple para verificar que el servidor funciona sin cargar el modelo"""
     return {"status": "ok", "message": "Calyx AI Backend is running"}
 
+@app.get("/version")
+async def get_app_version():
+    """Endpoint para obtener la versión de la aplicación desde VERSION.txt"""
+    version = get_version()
+    return {"version": version, "app_name": "Calyx AI"}
+
 @app.post("/chat")
 async def chat(request: Request):
     try:
@@ -459,10 +474,22 @@ async def chat(request: Request):
                         cleaned_message = re.sub(r'^\s*console\s*', '', cleaned_message, flags=re.IGNORECASE)
                         cleaned_message = cleaned_message.strip()
                         
+                        # Parsear respuesta del modelo para extraer título y contenido
+                        lines = cleaned_message.split('\n')
+                        title = f"Cálculo {calculation_data['formula']}"  # Fallback
+                        output_data = cleaned_message
+                        
+                        # Intentar extraer título si el modelo lo proporciona (línea que empieza con >)
+                        if lines and lines[0].strip().startswith('>'):
+                            title_line = lines[0].strip()
+                            title = title_line.replace('>', '').strip()
+                            # Remover el título del contenido del output
+                            output_data = '\n'.join(lines[1:]).strip()
+                        
                         console_block = {
-                            "title": f"Cálculo {calculation_data['formula']}",
-                            "input": f"DATOS DE ENTRADA:\n" + "\n".join([f"{k.title()}: {v} {('kg' if k=='peso' else 'm' if k=='altura' else 'años' if k=='edad' else '')}" for k, v in calculation_data['parametros'].items()]),
-                            "output": cleaned_message
+                            "title": title,
+                            "input": "",  # El modelo incluye los datos de entrada en el output
+                            "output": output_data
                         }
                         return {"message": "Cálculo completado", "thinking": thinking_content, "console_block": console_block}
                     else:
@@ -488,8 +515,27 @@ async def chat(request: Request):
         history_without_last = extract_history_without_last(prompt)
         system_prompt_extra = f"HISTORIAL DE CONVERSACIÓN PARA CONTEXTO:\n{history_without_last}\n\n" if history_without_last.strip() else ""
 
-        # Para conversaciones normales, usar generate_with_tools() con system prompt separado
-        response = ia_engine.generate_with_tools(last_user_message, system_prompt_extra=system_prompt_extra, max_new_tokens=512, temperature=0.3, top_p=0.8, max_iterations=1)
+        # Detectar si es consulta nutricional/alimentaria
+        nutrition_keywords = [
+            'informacion', 'información', 'datos', 'nutricional', 'nutricionales',
+            'calorias', 'calorías', 'proteinas', 'proteínas', 'grasas', 'fibra',
+            'sodio', 'vitamina', 'mineral', 'alimento', 'alimentos', 'comida',
+            'dieta', 'alimentacion', 'alimentación', 'nutriente', 'nutrientes',
+            'aporte', 'contiene', 'contenido', 'valor', 'valores', 'macronutriente',
+            'micronutriente', 'energia', 'energía', 'kcal', 'kj', 'hidratos',
+            'carbohidratos', 'lipidos', 'lípidos', 'azucar', 'azúcar', 'colesterol'
+        ]
+
+        is_nutrition_query = any(keyword in last_user_message.lower() for keyword in nutrition_keywords)
+
+        if is_nutrition_query:
+            print(f"[LOG] Detectada consulta nutricional: {last_user_message}")
+            # Usar prompt nutricional con tools
+            nutrition_prompt = ia_engine.build_nutrition_prompt(prompt, last_user_message)
+            response = ia_engine.generate(nutrition_prompt, max_new_tokens=512, temperature=0.3, top_p=0.8)
+        else:
+            # Para conversaciones normales, usar generate_with_tools() con system prompt separado
+            response = ia_engine.generate_with_tools(last_user_message, system_prompt_extra=system_prompt_extra, max_new_tokens=512, temperature=0.3, top_p=0.8, max_iterations=1)
         
         # Parsear respuesta de Qwen2.5-3B para separar thinking del mensaje final
         thinking_content, final_message = parse_ai_response(response)
@@ -511,17 +557,35 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
         return JSONResponse({"error": "Nombre de alimento requerido (mínimo 2 caracteres)"}, status_code=400)
 
     try:
-        # Validar entrada
-        validation = validate_food_input(nombre)
-        if not validation["valid"]:
-            return JSONResponse({"error": validation["message"]}, status_code=400)
+        # Extraer el nombre real del alimento removiendo prefijos comunes
+        nombre_limpio = nombre.strip().lower()
+
+        # Patrones para remover prefijos
+        prefijos_a_remover = [
+            r'^informacion completa de\s+',
+            r'^informacion de\s+',
+            r'^datos de\s+',
+            r'^aporta\s+',
+            r'^cu[aá]nt[ao]s?\s+(?:calor[ií]as|prote[ií]nas|grasas|fibra|sodio)\s+.*\s+'
+        ]
+
+        import re
+        for patron in prefijos_a_remover:
+            nombre_limpio = re.sub(patron, '', nombre_limpio, flags=re.IGNORECASE)
+
+        nombre_limpio = nombre_limpio.strip()
+
+        if not nombre_limpio or len(nombre_limpio) < 2:
+            return JSONResponse({"error": "No se pudo extraer un nombre de alimento válido"}, status_code=400)
+
+        print(f"[LOG] Nombre limpio extraído: '{nombre_limpio}'")
 
         # Buscar en base de datos
-        columns, rows = get_alimentos_by_name(nombre)
+        columns, rows = get_alimentos_by_name(nombre_limpio)
 
         if not columns or not rows:
             return JSONResponse({
-                "error": f"No se encontraron alimentos que coincidan con '{nombre}'"
+                "error": f"No se encontraron alimentos que coincidan con '{nombre_limpio}'"
             }, status_code=404)
 
         # Procesar resultados
@@ -591,9 +655,9 @@ def buscar_alimento(nombre: str = Query(..., description="Nombre del alimento a 
                 })
 
         mensaje = (
-            f"Se encontró una coincidencia exacta para '{nombre}'."
+            f"Se encontró una coincidencia exacta para '{nombre_limpio}'."
             if not variantes else
-            f"No se encontró una coincidencia exacta para '{nombre}'. Mostrando la opción más similar y algunas variantes."
+            f"No se encontró una coincidencia exacta para '{nombre_limpio}'. Mostrando la opción más similar y algunas variantes."
         )
 
         return {

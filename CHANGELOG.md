@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.7.2] - 2025-09-25
+### 🧠 CARACTERÍSTICA MAYOR: Sistema Híbrido de IA con Prompts Especializados
+- **Sistema de 3 prompts inteligentes**: Implementación completa de separación de responsabilidades
+  - **Prompt Conversacional**: Maneja interacciones sociales y consultas generales (sin herramientas)
+  - **Prompt Nutricional**: Activa herramientas de base de datos para consultas sobre alimentos
+  - **Prompt Médico**: Formatea cálculos automáticos en console blocks estructurados
+- **Detección automática de consultas**: Sistema inteligente que identifica el tipo de consulta y aplica el prompt apropiado
+- **Separación perfecta de funcionalidades**: Conversaciones, nutrición y cálculos médicos completamente independientes
+
+### 🐛 CORRECCIÓN CRÍTICA: Bug de Parámetros Reutilizados en Cálculos Médicos
+- **Problema identificado**: Cálculos médicos reutilizaban parámetros de consultas anteriores
+- **Causa raíz**: Prompt `build_calculation_prompt` contenía valores hardcodeados en ejemplos
+- **Solución implementada**: Remoción de valores hardcodeados y uso exclusivo de datos reales del JSON
+- **Validación completa**: Cada cálculo ahora usa únicamente los parámetros de la consulta actual
+
+### 🗣️ OPTIMIZACIÓN: Limpieza del Prompt Conversacional
+- **Eliminación de referencias cruzadas**: Removida mención a TOOL_CALL del prompt conversacional
+- **Separación limpia**: Prompt conversacional enfocado únicamente en personalidad y tono
+- **Prevención de confusiones**: IA no intenta usar herramientas en conversaciones normales
+
+### 🔧 Mejoras técnicas y estabilidad
+- **Arquitectura modular**: Sistema de prompts completamente desacoplado y mantenible
+- **Validación de integridad**: Verificación de que cada prompt maneja solo su responsabilidad
+- **Optimización de rendimiento**: Reducción de llamadas innecesarias entre componentes
+
 ## [1.7.1] - 2025-09-20
 ### 🚀 CARACTERÍSTICA MAYOR: Migración Completa a Qwen2.5-3B con Transformers
 - **Migración total de Ollama**: Eliminación completa de DeepSeek-R1 y sistema Ollama
