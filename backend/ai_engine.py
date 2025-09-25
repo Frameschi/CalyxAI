@@ -656,7 +656,7 @@ IMC = [resultado] ([interpretacion])"""
 
         enhanced_prompt = f"""CONSULTA_NUTRICIONAL = "{nutrition_query}"
 
-### INSTRUCCIONES PARA CONSULTAS NUTRICIONALES ###
+### INSTRUCCIONES PARA RESPUESTAS NUTRICIONALES PROFESIONALES ###
 
 Para consultas sobre alimentos, SIEMPRE debes usar las herramientas disponibles para obtener datos reales de la base de datos SMAE. NO inventes información nutricional.
 
@@ -669,12 +669,27 @@ HERRAMIENTAS DISPONIBLES (usa TOOL_CALL para acceder a datos reales):
 FORMATO PARA LLAMAR HERRAMIENTAS:
 TOOL_CALL: {{"tool": "consultar_alimento", "parameters": {{"nombre": "manzana"}}}}
 
-INSTRUCCIONES ESPECÍFICAS:
-- Usa consultar_alimento para alimentos específicos
-- Usa buscar_alimentos_filtrados para consultas como "alimentos bajos en sodio" o "ricos en fibra"
-- Responde de manera conversacional pero con datos precisos
-- Incluye la fuente (SMAE) cuando proporciones datos específicos
-- Si el usuario pide "información completa" o "detallada", proporciona datos completos pero en formato legible
+### INSTRUCCIONES DE FORMATO (NO COPIAR EN RESPUESTA) ###
+
+Cuando proporciones información nutricional:
+- Comienza con una breve introducción sobre el alimento
+- Incluye una tabla nutricional usando sintaxis Markdown pura
+- Agrega una conclusión breve si es relevante
+- Termina mencionando la fuente SMAE
+
+Ejemplo de tabla Markdown:
+| Componente | Valor por 100g |
+|------------|----------------|
+| Energía (kcal) | 342 |
+| Proteínas (g) | 2.7 |
+| Grasas Total (g) | 0.4 |
+
+IMPORTANTE:
+- Usa TABLAS MARKDOWN con | para separar columnas
+- NO uses **asteriscos** para negritas dentro de las tablas
+- Mantén las unidades en la columna de valores
+- Si hay subcategorías, usa filas separadas
+- La respuesta debe ser conversacional y natural
 
 CONSULTA DEL USUARIO: {user_prompt}"""
 

@@ -12,8 +12,9 @@ Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, p
 - **⚡ GPU Optimizado**: 42%/58% CPU/GPU balance para máximo rendimiento en GTX 1050 Ti
 - **🤖 Sistema Híbrido de IA**: 3 prompts especializados con detección automática inteligente
   - **Conversacional**: Interacciones sociales y consultas generales
-  - **Nutricional**: Consultas de alimentos con herramientas de base de datos
+  - **Nutricional**: Consultas de alimentos con herramientas de base de datos y **tablas Markdown profesionales**
   - **Médico**: Cálculos automáticos con formato profesional
+- **📊 Tablas Nutricionales Profesionales**: Renderizado Markdown completo con bordes reales y formato ChatGPT
 - **Cálculos automáticos de fórmulas nutricionales** (IMC, Composición Corporal, TMB, etc.)
 - **Separación inteligente de fórmulas médicas** - No interfieren entre sí
 - **Recolección progresiva de parámetros** - Conversaciones naturales para obtener datos
@@ -32,6 +33,8 @@ Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, p
 - Backend FastAPI modularizado, con IA y base de datos integrados
 - **Sistema híbrido de IA con 3 prompts especializados** (conversacional, nutricional, médico)
 - **Detección automática inteligente** de tipo de consulta y aplicación del prompt apropiado
+- **Sistema Markdown profesional** para respuestas nutricionales con tablas de calidad ChatGPT
+- **Separación perfecta de tipos de respuesta** - nutricionales usan Markdown, técnicas usan bloques YAML
 - **Sistema de fórmulas automático** con detección inteligente de parámetros
 - **Separación perfecta entre fórmulas** - IMC y Composición Corporal independientes
 - **Contexto inteligente** - 20 mensajes para fórmulas médicas, 6 para chat general
@@ -44,7 +47,7 @@ Ofrecer una herramienta de consulta nutricional y asistente personal, rápida, p
 - Pruebas exitosas de comunicación y generación de respuestas
 
 ---
-Desarrollado por Frameschi. Versión 1.7.2
+Desarrollado por Frameschi. Versión 1.7.3
 
 ## Sistema de Versiones
 
@@ -62,7 +65,7 @@ La versión de la aplicación se gestiona centralizadamente desde el archivo `VE
    - `frontend/src/pages/Settings.tsx` (lee desde el backend)
 
 ---
-Desarrollado por Frameschi. Versión 1.7.2
+Desarrollado por Frameschi. Versión 1.7.3
 
 ## Notas de versión
 Consulta los cambios recientes en [CHANGELOG.md](./CHANGELOG.md)

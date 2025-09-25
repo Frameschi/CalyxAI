@@ -1,6 +1,17 @@
 
 export function esBloqueYaml(texto: string): boolean {
-  // Detecta si tiene header tipo # y líneas clave: valor
+  // NO detectar como YAML respuestas que contienen tablas Markdown (con |)
+  if (texto.includes('|') && texto.includes('\n|')) {
+    return false;
+  }
+
+  // NO detectar como YAML respuestas nutricionales (contienen palabras clave)
+  const palabrasNutricion = ['aporte nutricional', 'información nutricional', 'valor nutricional', 'calorías', 'proteínas', 'grasas', 'carbohidratos', 'fibra', 'sodio', 'hierro', 'calcio'];
+  if (palabrasNutricion.some(palabra => texto.toLowerCase().includes(palabra))) {
+    return false;
+  }
+
+  // Detecta si tiene header tipo # y líneas clave: valor (solo para bloques técnicos reales)
   return /(^|\n)#\s*.+/.test(texto) && /:\s*.+/.test(texto);
 }
 

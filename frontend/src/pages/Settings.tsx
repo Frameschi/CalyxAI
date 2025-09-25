@@ -52,11 +52,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
           const data = await response.json();
           setAppVersion(data.version);
         } else {
-          setAppVersion('1.7.2'); // Fallback
+          setAppVersion('1.7.3'); // Fallback
         }
       } catch (error) {
         console.error('Error fetching version:', error);
-        setAppVersion('1.7.2'); // Fallback
+        setAppVersion('1.7.3'); // Fallback
       }
     };
 
@@ -171,7 +171,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
               
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Desarrollado por</span>
-                <span className="text-gray-900 dark:text-white font-medium">ARCROSS</span>
+                <span className="text-gray-900 dark:text-white font-medium">✴ARCROSS</span>
               </div>
             </div>
           </div>

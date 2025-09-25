@@ -1,7 +1,7 @@
 {
   "name": "calyx-ai",
   "productName": "Calyx AI",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "AI-powered medical calculation assistant with Qwen2.5-3B and GPU optimization",
   "author": {
     "name": "ARCROSS",
@@ -27,7 +27,9 @@
     "framer-motion": "^11.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.23.0"
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.23.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.1",

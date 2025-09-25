@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.7.3] - 2025-09-25
+### 🎨 CARACTERÍSTICA MAYOR: Sistema Markdown Profesional para Respuestas Nutricionales
+- **Procesamiento completo de Markdown**: Implementación de `react-markdown` + `remark-gfm` para renderizado profesional
+- **Tablas con bordes reales**: Conversión automática de sintaxis Markdown (`| columna |`) a tablas HTML con bordes y alineación perfecta
+- **Detección inteligente de contenido**: Sistema que identifica respuestas nutricionales vs bloques técnicos YAML
+- **Estilos Tailwind optimizados**: Tablas responsive con tema oscuro/claro, hover effects y diseño profesional
+
+### 🧠 OPTIMIZACIÓN: Arquitectura de Respuestas Mejorada
+- **Separación inteligente de tipos**: Respuestas nutricionales usan `ConsoleRenderer` (con Markdown), respuestas técnicas usan `ConsoleBlockYaml`
+- **Prevención de detección errónea**: Modificación de `esBloqueYaml()` para no confundir respuestas nutricionales con bloques técnicos
+- **Prompt nutricional optimizado**: Eliminación de estructura rígida que causaba copia literal de instrucciones
+- **Flujo conversacional natural**: Respuestas nutricionales ahora fluyen naturalmente sin listas numeradas forzadas
+
+### 🔧 Mejoras técnicas y estabilidad
+- **Librerías optimizadas**: `react-markdown` y `remark-gfm` para soporte completo de tablas y formato
+- **Detección de sintaxis avanzada**: Función `hasMarkdownSyntax()` identifica automáticamente contenido con formato Markdown
+- **Componentes estilizados**: Headers, tablas, listas y texto con estilos consistentes y accesibles
+- **Compatibilidad retroactiva**: Respuestas sin Markdown siguen funcionando normalmente
+
 ## [1.7.2] - 2025-09-25
 ### 🧠 CARACTERÍSTICA MAYOR: Sistema Híbrido de IA con Prompts Especializados
 - **Sistema de 3 prompts inteligentes**: Implementación completa de separación de responsabilidades
